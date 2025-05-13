@@ -8,30 +8,211 @@
 </head>
 <body>
     <div class="container">
-        <div class="weather-card">
-            <h1>West Chester, PA Weather</h1>
-            <div class="weather-info">
-                <div class="temp-container">
-                    <div class="high">
-                        <span class="label">High</span>
-                        <span id="high-temp">--°F</span>
+        <h1>West Chester, PA Weather</h1>
+        
+        <!-- Current Weather Grid -->
+        <div class="weather-grid">
+            <!-- Current Temperature Card -->
+            <div class="weather-card">
+                <h2>Current Conditions</h2>
+                <div class="weather-info">
+                    <div class="temp-container">
+                        <div class="high">
+                            <span class="label">High</span>
+                            <span id="high-temp">--°F</span>
+                        </div>
+                        <div class="low">
+                            <span class="label">Low</span>
+                            <span id="low-temp">--°F</span>
+                        </div>
                     </div>
-                    <div class="low">
-                        <span class="label">Low</span>
-                        <span id="low-temp">--°F</span>
+                    <div class="conditions">
+                        <span id="conditions">Loading...</span>
                     </div>
-                </div>
-                <div class="precipitation">
-                    <span class="label">Precipitation</span>
-                    <span id="precipitation">--%</span>
-                </div>
-                <div class="conditions">
-                    <span id="conditions">Loading...</span>
-                </div>
-                <div class="last-updated">
-                    <span id="update-time"></span>
                 </div>
             </div>
+
+            <!-- Precipitation Card -->
+            <div class="weather-card">
+                <h2>Precipitation</h2>
+                <div class="weather-info">
+                    <div class="precip-details">
+                        <div class="chance">
+                            <span class="label">Chance</span>
+                            <span id="precipitation">--%</span>
+                        </div>
+                        <div class="amount">
+                            <span class="label">Amount</span>
+                            <span id="precip-amount">-- in</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Wind Card -->
+            <div class="weather-card">
+                <h2>Wind</h2>
+                <div class="weather-info">
+                    <div class="wind-details">
+                        <div class="speed">
+                            <span class="label">Speed</span>
+                            <span id="wind-speed">-- mph</span>
+                        </div>
+                        <div class="direction">
+                            <span class="label">Direction</span>
+                            <span id="wind-dir">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Comfort Card -->
+            <div class="weather-card">
+                <h2>Comfort</h2>
+                <div class="weather-info">
+                    <div class="comfort-details">
+                        <div class="feels-like">
+                            <span class="label">Feels Like</span>
+                            <span id="feels-like">--°F</span>
+                        </div>
+                        <div class="humidity">
+                            <span class="label">Humidity</span>
+                            <span id="humidity">--%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sun Card -->
+            <div class="weather-card">
+                <h2>Sun</h2>
+                <div class="weather-info">
+                    <div class="sun-details">
+                        <div class="sunrise">
+                            <span class="label">Sunrise</span>
+                            <span id="sunrise">--:--</span>
+                        </div>
+                        <div class="sunset">
+                            <span class="label">Sunset</span>
+                            <span id="sunset">--:--</span>
+                        </div>
+                        <div class="uv">
+                            <span class="label">UV Index</span>
+                            <span id="uv-index">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Historical Comparison -->
+        <h2 class="section-title">Last Year's Weather</h2>
+        <div class="weather-grid historical">
+            <div class="weather-card historical-card">
+                <h2>Temperature</h2>
+                <div class="weather-info">
+                    <div class="historical-temps">
+                        <div class="hist-high">
+                            <span class="label">High</span>
+                            <span id="hist-high">--°F</span>
+                        </div>
+                        <div class="hist-low">
+                            <span class="label">Low</span>
+                            <span id="hist-low">--°F</span>
+                        </div>
+                        <div class="hist-precip">
+                            <span class="label">Precipitation</span>
+                            <span id="hist-precip">-- in</span>
+                        </div>
+                    </div>
+                    <div class="conditions">
+                        <span id="hist-conditions">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3-Day Forecast -->
+        <h2 class="section-title">3-Day Forecast</h2>
+        <div class="weather-grid forecast">
+            <div class="weather-card forecast-card" id="forecast-1">
+                <h2 id="day-1">Tomorrow</h2>
+                <div class="weather-info">
+                    <div class="forecast-temps">
+                        <div class="forecast-high">
+                            <span class="label">High</span>
+                            <span class="forecast-high-temp">--°F</span>
+                        </div>
+                        <div class="forecast-low">
+                            <span class="label">Low</span>
+                            <span class="forecast-low-temp">--°F</span>
+                        </div>
+                    </div>
+                    <div class="forecast-details">
+                        <div class="forecast-precip">
+                            <span class="label">Precipitation</span>
+                            <span class="forecast-precip-chance">--%</span>
+                        </div>
+                        <div class="forecast-conditions">
+                            <span class="forecast-condition-text">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="weather-card forecast-card" id="forecast-2">
+                <h2 id="day-2">Day 2</h2>
+                <div class="weather-info">
+                    <div class="forecast-temps">
+                        <div class="forecast-high">
+                            <span class="label">High</span>
+                            <span class="forecast-high-temp">--°F</span>
+                        </div>
+                        <div class="forecast-low">
+                            <span class="label">Low</span>
+                            <span class="forecast-low-temp">--°F</span>
+                        </div>
+                    </div>
+                    <div class="forecast-details">
+                        <div class="forecast-precip">
+                            <span class="label">Precipitation</span>
+                            <span class="forecast-precip-chance">--%</span>
+                        </div>
+                        <div class="forecast-conditions">
+                            <span class="forecast-condition-text">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="weather-card forecast-card" id="forecast-3">
+                <h2 id="day-3">Day 3</h2>
+                <div class="weather-info">
+                    <div class="forecast-temps">
+                        <div class="forecast-high">
+                            <span class="label">High</span>
+                            <span class="forecast-high-temp">--°F</span>
+                        </div>
+                        <div class="forecast-low">
+                            <span class="label">Low</span>
+                            <span class="forecast-low-temp">--°F</span>
+                        </div>
+                    </div>
+                    <div class="forecast-details">
+                        <div class="forecast-precip">
+                            <span class="label">Precipitation</span>
+                            <span class="forecast-precip-chance">--%</span>
+                        </div>
+                        <div class="forecast-conditions">
+                            <span class="forecast-condition-text">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="last-updated">
+            <span id="update-time"></span>
         </div>
     </div>
     <script src="script.js"></script>
