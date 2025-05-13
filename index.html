@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>West Chester Weather</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="weather-card">
+            <h1>West Chester, PA Weather</h1>
+            <div class="weather-info">
+                <div class="temp-container">
+                    <div class="high">
+                        <span class="label">High</span>
+                        <span id="high-temp">--°F</span>
+                    </div>
+                    <div class="low">
+                        <span class="label">Low</span>
+                        <span id="low-temp">--°F</span>
+                    </div>
+                </div>
+                <div class="precipitation">
+                    <span class="label">Precipitation</span>
+                    <span id="precipitation">--%</span>
+                </div>
+                <div class="conditions">
+                    <span id="conditions">Loading...</span>
+                </div>
+                <div class="last-updated">
+                    <span id="update-time"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html> 
