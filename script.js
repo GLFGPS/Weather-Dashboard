@@ -64,8 +64,8 @@ async function getWeather() {
         document.getElementById('hist-precip').textContent = `${historicalDay.precip || 0} in`;
         document.getElementById('hist-conditions').textContent = historicalDay.conditions;
 
-        // Update historical rank
-        getHistoricalRank(today.tempmax, today.tempmin, today.datetime, LOCATION, API_KEY);
+        // Update historical high/low/humidity cards
+        updateHistoricalCards(today, LOCATION, API_KEY);
 
         // Update forecast
         updateForecast(currentData.days.slice(1, 4));
@@ -77,7 +77,9 @@ async function getWeather() {
     } catch (error) {
         console.error('Error fetching weather data:', error);
         document.getElementById('conditions').textContent = 'Error loading weather data';
-        document.getElementById('historical-rank').textContent = 'Error loading historical rank';
+        document.getElementById('high-rank').textContent = 'Error';
+        document.getElementById('low-rank').textContent = 'Error';
+        document.getElementById('humidity-rank').textContent = 'Error';
     }
 }
 
@@ -125,14 +127,13 @@ function addDays(dateStr, days) {
     return date.toISOString().split('T')[0];
 }
 
-async function getHistoricalRank(todayHigh, todayLow, todayDate, location, apiKey) {
-    const years = 10;
-    const dateParts = todayDate.split('-');
+async function updateHistoricalCards(today, location, apiKey) {
+    const years = 5;
+    const dateParts = today.datetime.split('-');
     const month = dateParts[1];
     const day = dateParts[2];
     const year = parseInt(dateParts[0], 10);
     const promises = [];
-    document.getElementById('historical-rank').textContent = 'Loading...';
     for (let i = 1; i < years; i++) {
         const pastYear = year - i;
         const dateStr = `${pastYear}-${month}-${day}`;
@@ -141,57 +142,67 @@ async function getHistoricalRank(todayHigh, todayLow, todayDate, location, apiKe
                 .then(res => res.ok ? res.json() : null)
                 .then(data => data && data.days && data.days[0] ? {
                     high: data.days[0].tempmax,
-                    low: data.days[0].tempmin
+                    low: data.days[0].tempmin,
+                    humidity: data.days[0].humidity
                 } : null)
                 .catch(() => null)
         );
     }
-    let pastTemps;
+    // Show loading
+    document.getElementById('high-rank').textContent = 'Loading...';
+    document.getElementById('low-rank').textContent = 'Loading...';
+    document.getElementById('humidity-rank').textContent = 'Loading...';
+    let pastData;
     try {
-        pastTemps = (await Promise.all(promises)).filter(x => x !== null);
+        pastData = (await Promise.all(promises)).filter(x => x !== null);
     } catch (e) {
-        document.getElementById('historical-rank').textContent = 'Error loading historical data.';
+        document.getElementById('high-rank').textContent = 'Error';
+        document.getElementById('low-rank').textContent = 'Error';
+        document.getElementById('humidity-rank').textContent = 'Error';
         return;
     }
-    if (pastTemps.length < 5) {
-        document.getElementById('historical-rank').textContent = 'Not enough historical data available.';
+    if (pastData.length < 3) {
+        document.getElementById('high-rank').textContent = 'Not enough data';
+        document.getElementById('low-rank').textContent = 'Not enough data';
+        document.getElementById('humidity-rank').textContent = 'Not enough data';
         return;
     }
-    const allHighs = [todayHigh, ...pastTemps.map(x => x.high)];
-    const allLows = [todayLow, ...pastTemps.map(x => x.low)];
-    // Hottest rank (high temp, descending)
-    const sortedHighs = [...allHighs].sort((a, b) => b - a);
-    const hotRank = sortedHighs.indexOf(todayHigh) + 1;
-    // Coldest rank (low temp, ascending)
-    const sortedLows = [...allLows].sort((a, b) => a - b);
-    const coldRank = sortedLows.indexOf(todayLow) + 1;
-    // Build text
-    let hotText = '';
-    if (hotRank === 1) {
-        hotText = `hottest`;
-    } else if (hotRank === allHighs.length) {
-        hotText = `coldest (high)`;
-    } else {
-        hotText = `${hotRank}${ordinalSuffix(hotRank)} hottest`;
-    }
-    let coldText = '';
-    if (coldRank === 1) {
-        coldText = `coldest`;
-    } else if (coldRank === allLows.length) {
-        coldText = `warmest (low)`;
-    } else {
-        coldText = `${coldRank}${ordinalSuffix(coldRank)} coldest`;
-    }
-    let rankText = `Today is the ${hotText} and ${coldText} day in the last ${allHighs.length} years.`;
-    document.getElementById('historical-rank').textContent = rankText;
-}
-
-function ordinalSuffix(i) {
-    const j = i % 10, k = i % 100;
-    if (j === 1 && k !== 11) return 'st';
-    if (j === 2 && k !== 12) return 'nd';
-    if (j === 3 && k !== 13) return 'rd';
-    return 'th';
+    // Build arrays for each metric
+    const highs = [today.tempmax, ...pastData.map(x => x.high)];
+    const lows = [today.tempmin, ...pastData.map(x => x.low)];
+    const humidities = [today.humidity, ...pastData.map(x => x.humidity)];
+    // Calculate averages
+    const avg = arr => arr.reduce((a, b) => a + b, 0) / arr.length;
+    const avgHigh = avg(highs).toFixed(1);
+    const avgLow = avg(lows).toFixed(1);
+    const avgHumidity = avg(humidities).toFixed(1);
+    // Calculate ranks
+    const rank = (arr, val, desc = true) => {
+        const sorted = [...arr].sort((a, b) => desc ? b - a : a - b);
+        return sorted.indexOf(val) + 1;
+    };
+    const ordinal = i => {
+        const j = i % 10, k = i % 100;
+        if (j === 1 && k !== 11) return 'st';
+        if (j === 2 && k !== 12) return 'nd';
+        if (j === 3 && k !== 13) return 'rd';
+        return 'th';
+    };
+    // Update High Card
+    document.getElementById('high-today').textContent = `${Math.round(today.tempmax)}°F`;
+    document.getElementById('high-avg').textContent = `${avgHigh}°F`;
+    const highRank = rank(highs, today.tempmax, true);
+    document.getElementById('high-rank').textContent = `Rank: ${highRank}${ordinal(highRank)} highest in 5 years`;
+    // Update Low Card
+    document.getElementById('low-today').textContent = `${Math.round(today.tempmin)}°F`;
+    document.getElementById('low-avg').textContent = `${avgLow}°F`;
+    const lowRank = rank(lows, today.tempmin, false);
+    document.getElementById('low-rank').textContent = `Rank: ${lowRank}${ordinal(lowRank)} lowest in 5 years`;
+    // Update Humidity Card
+    document.getElementById('humidity-today').textContent = `${Math.round(today.humidity)}%`;
+    document.getElementById('humidity-avg').textContent = `${avgHumidity}%`;
+    const humidityRank = rank(humidities, today.humidity, true);
+    document.getElementById('humidity-rank').textContent = `Rank: ${humidityRank}${ordinal(humidityRank)} highest in 5 years`;
 }
 
 // Fetch weather data when the page loads
