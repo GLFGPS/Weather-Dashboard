@@ -32,6 +32,33 @@
                 </div>
             </div>
 
+            <!-- Historical Rank Card -->
+            <div class="weather-card" id="historical-rank-card">
+                <h2>How Hot/Cold Is Today?</h2>
+                <div id="historical-rank">Loading...</div>
+            </div>
+
+            <!-- Search Volume Card -->
+            <div class="weather-card" id="search-volume-card">
+                <h2>Search Volume: Pest Control & Exterminator</h2>
+                <div id="trends-widget" style="height: 350px;">
+                    <script type="text/javascript" src="https://ssl.gstatic.com/trends_nrtr/4031_RC01/embed_loader.js"></script>
+                    <script type="text/javascript">
+                        trends.embed.renderExploreWidget("TIMESERIES", {
+                            "comparisonItem": [
+                                {"keyword": "pest control", "geo": "US-PA-504", "time": "2015-04-20 2025-05-20"},
+                                {"keyword": "exterminator", "geo": "US-PA-504", "time": "2015-04-20 2025-05-20"}
+                            ],
+                            "category": 0,
+                            "property": ""
+                        }, {
+                            "exploreQuery": "date=2015-04-20%202025-05-20&geo=US-PA-504&q=pest%20control,exterminator&hl=en",
+                            "guestPath": "https://trends.google.com:443/trends/embed/"
+                        });
+                    </script>
+                </div>
+            </div>
+
             <!-- Today's Leads Card -->
             <div class="weather-card leads-card">
                 <h2>Today's Leads</h2>
