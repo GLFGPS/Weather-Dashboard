@@ -64,6 +64,9 @@ async function getWeather() {
         document.getElementById('hist-precip').textContent = `${historicalDay.precip || 0} in`;
         document.getElementById('hist-conditions').textContent = historicalDay.conditions;
 
+        // Update historical rank
+        getHistoricalRank(today.tempmax, today.tempmin, today.datetime, LOCATION, API_KEY);
+
         // Update forecast
         updateForecast(currentData.days.slice(1, 4));
 
@@ -74,6 +77,7 @@ async function getWeather() {
     } catch (error) {
         console.error('Error fetching weather data:', error);
         document.getElementById('conditions').textContent = 'Error loading weather data';
+        document.getElementById('historical-rank').textContent = 'Error loading historical rank';
     }
 }
 
@@ -119,6 +123,75 @@ function addDays(dateStr, days) {
     const date = new Date(dateStr);
     date.setDate(date.getDate() + days);
     return date.toISOString().split('T')[0];
+}
+
+async function getHistoricalRank(todayHigh, todayLow, todayDate, location, apiKey) {
+    const years = 10;
+    const dateParts = todayDate.split('-');
+    const month = dateParts[1];
+    const day = dateParts[2];
+    const year = parseInt(dateParts[0], 10);
+    const promises = [];
+    document.getElementById('historical-rank').textContent = 'Loading...';
+    for (let i = 1; i < years; i++) {
+        const pastYear = year - i;
+        const dateStr = `${pastYear}-${month}-${day}`;
+        promises.push(
+            fetch(`https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/${location}/${dateStr}?unitGroup=us&key=${apiKey}&contentType=json`)
+                .then(res => res.ok ? res.json() : null)
+                .then(data => data && data.days && data.days[0] ? {
+                    high: data.days[0].tempmax,
+                    low: data.days[0].tempmin
+                } : null)
+                .catch(() => null)
+        );
+    }
+    let pastTemps;
+    try {
+        pastTemps = (await Promise.all(promises)).filter(x => x !== null);
+    } catch (e) {
+        document.getElementById('historical-rank').textContent = 'Error loading historical data.';
+        return;
+    }
+    if (pastTemps.length < 5) {
+        document.getElementById('historical-rank').textContent = 'Not enough historical data available.';
+        return;
+    }
+    const allHighs = [todayHigh, ...pastTemps.map(x => x.high)];
+    const allLows = [todayLow, ...pastTemps.map(x => x.low)];
+    // Hottest rank (high temp, descending)
+    const sortedHighs = [...allHighs].sort((a, b) => b - a);
+    const hotRank = sortedHighs.indexOf(todayHigh) + 1;
+    // Coldest rank (low temp, ascending)
+    const sortedLows = [...allLows].sort((a, b) => a - b);
+    const coldRank = sortedLows.indexOf(todayLow) + 1;
+    // Build text
+    let hotText = '';
+    if (hotRank === 1) {
+        hotText = `hottest`;
+    } else if (hotRank === allHighs.length) {
+        hotText = `coldest (high)`;
+    } else {
+        hotText = `${hotRank}${ordinalSuffix(hotRank)} hottest`;
+    }
+    let coldText = '';
+    if (coldRank === 1) {
+        coldText = `coldest`;
+    } else if (coldRank === allLows.length) {
+        coldText = `warmest (low)`;
+    } else {
+        coldText = `${coldRank}${ordinalSuffix(coldRank)} coldest`;
+    }
+    let rankText = `Today is the ${hotText} and ${coldText} day in the last ${allHighs.length} years.`;
+    document.getElementById('historical-rank').textContent = rankText;
+}
+
+function ordinalSuffix(i) {
+    const j = i % 10, k = i % 100;
+    if (j === 1 && k !== 11) return 'st';
+    if (j === 2 && k !== 12) return 'nd';
+    if (j === 3 && k !== 13) return 'rd';
+    return 'th';
 }
 
 // Fetch weather data when the page loads
