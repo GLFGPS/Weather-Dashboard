@@ -46,17 +46,39 @@
                     <script type="text/javascript">
                         trends.embed.renderExploreWidget("TIMESERIES", {
                             "comparisonItem": [
-                                {"keyword": "pest control", "geo": "US-PA-504", "time": "2015-04-20 2025-05-20"},
-                                {"keyword": "exterminator", "geo": "US-PA-504", "time": "2015-04-20 2025-05-20"}
+                                {"keyword": "pest control", "geo": "US-PA-504", "time": "today 5-y"},
+                                {"keyword": "exterminator", "geo": "US-PA-504", "time": "today 5-y"}
                             ],
                             "category": 0,
                             "property": ""
                         }, {
-                            "exploreQuery": "date=2015-04-20%202025-05-20&geo=US-PA-504&q=pest%20control,exterminator&hl=en",
+                            "exploreQuery": "date=today%205-y&geo=US-PA-504&q=pest%20control,exterminator&hl=en",
                             "guestPath": "https://trends.google.com:443/trends/embed/"
                         });
                     </script>
                 </div>
+            </div>
+
+            <!-- Search Volume Ranking Card -->
+            <div class="weather-card" id="search-volume-ranking-card">
+                <h2>Search Volume Ranking (Week of May 20th, Past 5 Years)</h2>
+                <table id="search-volume-table" style="width:100%; margin-bottom: 1rem; text-align:center;">
+                    <thead>
+                        <tr>
+                            <th>Year</th>
+                            <th>Pest Control</th>
+                            <th>Exterminator</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>2019</td><td>100</td><td>38</td></tr>
+                        <tr><td>2023</td><td>87</td><td>28</td></tr>
+                        <tr><td>2021</td><td>85</td><td>28</td></tr>
+                        <tr><td>2020</td><td>81</td><td>28</td></tr>
+                        <tr><td>2022</td><td>81</td><td>28</td></tr>
+                    </tbody>
+                </table>
+                <canvas id="searchVolumeChart" width="400" height="250"></canvas>
             </div>
 
             <!-- Today's Leads Card -->
@@ -253,5 +275,46 @@
         </div>
     </div>
     <script src="script.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // Data for the chart
+        const years = ["2019", "2023", "2021", "2020", "2022"];
+        const pestControl = [100, 87, 85, 81, 81];
+        const exterminator = [38, 28, 28, 28, 28];
+        const ctx = document.getElementById('searchVolumeChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: years,
+                datasets: [
+                    {
+                        label: 'Pest Control',
+                        data: pestControl,
+                        backgroundColor: 'rgba(52, 152, 219, 0.7)'
+                    },
+                    {
+                        label: 'Exterminator',
+                        data: exterminator,
+                        backgroundColor: 'rgba(231, 76, 60, 0.7)'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'top' },
+                    title: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: { display: true, text: 'Search Volume (Relative)' }
+                    }
+                }
+            }
+        });
+    </script>
 </body>
 </html> 
