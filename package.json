@@ -1,0 +1,29 @@
+{
+  "name": "weather-dashboard",
+  "version": "1.0.0",
+  "description": "Internal weather and lead analytics dashboard",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GLFGPS/Weather-Dashboard.git"
+  },
+  "keywords": [],
+  "author": "GLFGPS",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/GLFGPS/Weather-Dashboard/issues"
+  },
+  "homepage": "https://github.com/GLFGPS/Weather-Dashboard#readme",
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "next": "^16.1.6",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  }
+}
