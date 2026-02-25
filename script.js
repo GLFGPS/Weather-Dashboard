@@ -1,5 +1,6 @@
 async function getWeather() {
-    const API_KEY = 'KBC5EJCQGFX2NUR779XBYG332';
+    // Legacy static version (kept for reference only). Use server-side env vars in Next.js routes instead.
+    const API_KEY = 'SET_IN_SERVER_ENV_NOT_CLIENT';
     const LOCATION = 'West Chester,PA';
 
     try {
