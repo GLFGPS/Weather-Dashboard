@@ -88,6 +88,11 @@ function chartColor(index) {
   return CHART_COLORS[index % CHART_COLORS.length];
 }
 
+function nextFiftyAbove(value) {
+  const safeValue = Number.isFinite(Number(value)) ? Number(value) : 0;
+  return (Math.floor(safeValue / 50) + 1) * 50;
+}
+
 export default function HomePage() {
   const [markets, setMarkets] = useState([]);
   const [selectedMarket, setSelectedMarket] = useState(FALLBACK_MARKETS[0]);
@@ -161,6 +166,20 @@ export default function HomePage() {
     selectedSeries ||
     chartSeries[0] ||
     null;
+  const sharedLeadAxisMax = useMemo(() => {
+    const maxLead = displaySeries.reduce((runningMax, series) => {
+      const seriesMax = Math.max(
+        ...(series.points || []).map((point) => {
+          const leads = Number(point.filteredLeads);
+          return Number.isFinite(leads) ? leads : 0;
+        }),
+        0,
+      );
+      return Math.max(runningMax, seriesMax);
+    }, 0);
+    return Math.max(50, nextFiftyAbove(maxLead));
+  }, [displaySeries]);
+
   const maxDailyLead = Math.max(
     ...(tableSeries?.points || []).map((row) => row.filteredLeads),
     0,
@@ -695,7 +714,7 @@ export default function HomePage() {
               <ComposedChart data={overlayData}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="dayKey" />
-                <YAxis yAxisId="leads" />
+                <YAxis yAxisId="leads" domain={[0, sharedLeadAxisMax]} />
                 <YAxis yAxisId="temp" orientation="right" />
                 <Tooltip />
                 <Legend />
@@ -739,7 +758,7 @@ export default function HomePage() {
                     <ComposedChart data={series.points}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="dayKey" />
-                      <YAxis yAxisId="leads" />
+                      <YAxis yAxisId="leads" domain={[0, sharedLeadAxisMax]} />
                       <YAxis yAxisId="temp" orientation="right" />
                       <Tooltip />
                       <Bar
@@ -772,7 +791,7 @@ export default function HomePage() {
               <ComposedChart data={toggleSeries?.points || []}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="dayKey" />
-                <YAxis yAxisId="leads" />
+                <YAxis yAxisId="leads" domain={[0, sharedLeadAxisMax]} />
                 <YAxis yAxisId="temp" orientation="right" />
                 <Tooltip />
                 <Legend />
