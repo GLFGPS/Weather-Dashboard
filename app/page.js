@@ -40,6 +40,12 @@ const WEATHER_LINE_OPTIONS = [
   { key: "avgSnowDepth", label: "Avg Snow Depth" },
 ];
 
+const LAG_METRIC_OPTIONS = [
+  { key: "avgTempMax", label: "Avg Temp Max" },
+  { key: "avgUv", label: "Avg UV" },
+  { key: "avgSnowDepth", label: "Avg Snow Depth" },
+];
+
 const CHART_COLORS = ["#118257", "#1f4f86", "#8a5cf5", "#f08a24", "#da3f5f", "#0f766e"];
 
 function formatNumber(value, digits = 0) {
@@ -50,6 +56,11 @@ function formatNumber(value, digits = 0) {
 function formatTemp(value, digits = 0) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return "--";
   return `${Number(value).toFixed(digits)}°F`;
+}
+
+function formatPercent(value, digits = 1) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "--";
+  return `${Number(value).toFixed(digits)}%`;
 }
 
 function marketLabel(market) {
@@ -93,6 +104,54 @@ function nextFiftyAbove(value) {
   return (Math.floor(safeValue / 50) + 1) * 50;
 }
 
+function buildDecisionState({ tempMax, snowDepth, precip, leadDelta }) {
+  let score = 0;
+  const reasons = [];
+
+  if (snowDepth !== null && snowDepth >= 1) {
+    score += 3;
+    reasons.push("Deep snow on ground");
+  } else if (snowDepth !== null && snowDepth > 0) {
+    score += 2;
+    reasons.push("Snow still on ground");
+  }
+
+  if (tempMax !== null && tempMax < 42) {
+    score += 1;
+    reasons.push("Cold max temperature");
+  }
+
+  if (precip !== null && precip >= 0.2) {
+    score += 1;
+    reasons.push("Wet conditions");
+  }
+
+  if (leadDelta !== null && leadDelta <= -10) {
+    score += 2;
+    reasons.push("Leads trailing weather-adjusted baseline");
+  } else if (leadDelta !== null && leadDelta >= 10) {
+    score -= 1;
+    reasons.push("Leads outperforming weather-adjusted baseline");
+  }
+
+  let state = "Go";
+  let action = "Proceed with standard outreach and staffing cadence.";
+  if (score >= 5) {
+    state = "Hold";
+    action = "Pause broad outreach and focus on high-intent follow-up.";
+  } else if (score >= 3) {
+    state = "Caution";
+    action = "Use segmented targeting and monitor next-day lead response.";
+  }
+
+  return {
+    state,
+    score,
+    reasons: reasons.length ? reasons : ["Conditions supportive for standard plans."],
+    action,
+  };
+}
+
 export default function HomePage() {
   const [markets, setMarkets] = useState([]);
   const [selectedMarket, setSelectedMarket] = useState(FALLBACK_MARKETS[0]);
@@ -106,6 +165,7 @@ export default function HomePage() {
   const [toggleYear, setToggleYear] = useState(null);
   const [tableYear, setTableYear] = useState(null);
   const [weatherLineMetric, setWeatherLineMetric] = useState("avgTempMax");
+  const [lagMetric, setLagMetric] = useState("avgTempMax");
   const [fourthMetricKey, setFourthMetricKey] = useState("avgSnowDepth");
 
   const [marketWeather, setMarketWeather] = useState(null);
@@ -184,6 +244,62 @@ export default function HomePage() {
     ...(tableSeries?.points || []).map((row) => row.filteredLeads),
     0,
   );
+  const insights = leadsOverview?.insights || {};
+  const conditionMatrix = insights.conditionMatrix || [];
+  const lagEffect = insights.lagEffect || { lags: [], bestByMetric: {} };
+  const goalTracking = insights.goalTracking || null;
+  const marketElasticity = insights.marketElasticity || [];
+  const decisionByDate = insights.decisionByDate || [];
+
+  const goalTrackingData = goalTracking?.points || [];
+  const goalAxisMax = useMemo(() => {
+    const highest = Math.max(
+      ...goalTrackingData.map((point) =>
+        Math.max(
+          Number(point.actualLeads) || 0,
+          Number(point.expectedLeads) || 0,
+          Number(point.upperBand) || 0,
+        ),
+      ),
+      0,
+    );
+    return Math.max(50, nextFiftyAbove(highest));
+  }, [goalTrackingData]);
+
+  const lagChartData = useMemo(
+    () =>
+      (lagEffect?.lags || []).map((row) => ({
+        lag: row.lag,
+        correlation: row?.[lagMetric]?.correlation ?? null,
+        sampleSize: row?.[lagMetric]?.sampleSize ?? 0,
+      })),
+    [lagEffect, lagMetric],
+  );
+  const lagBest = lagEffect?.bestByMetric?.[lagMetric] || null;
+  const selectedGoalPoint = goalTrackingData.find((point) => point.date === analysisDate) || null;
+  const selectedLeadPoint =
+    selectedSeries?.points?.find((point) => point.date === analysisDate) || null;
+  const selectedDecision = decisionByDate.find((row) => row.date === analysisDate) || null;
+  const selectedMarketDecision = useMemo(() => {
+    const tempMax = Number(selectedWeather?.selectedDay?.tempmax);
+    const snowDepth = Number(selectedWeather?.selectedDay?.snowdepth);
+    const precip = Number(selectedWeather?.selectedDay?.precip);
+    const leadDelta =
+      selectedLeadPoint && selectedGoalPoint?.expectedLeads !== null
+        ? selectedLeadPoint.filteredLeads - Number(selectedGoalPoint?.expectedLeads)
+        : null;
+
+    if (!Number.isFinite(tempMax) && !Number.isFinite(snowDepth) && !Number.isFinite(precip)) {
+      return null;
+    }
+
+    return buildDecisionState({
+      tempMax: Number.isFinite(tempMax) ? tempMax : null,
+      snowDepth: Number.isFinite(snowDepth) ? snowDepth : null,
+      precip: Number.isFinite(precip) ? precip : null,
+      leadDelta: Number.isFinite(leadDelta) ? leadDelta : null,
+    });
+  }, [selectedWeather, selectedLeadPoint, selectedGoalPoint]);
 
   useEffect(() => {
     if (!locationOptions.length) return;
@@ -565,6 +681,67 @@ export default function HomePage() {
       </section>
 
       <section className="panel">
+        <h2>Market-Day Decision State</h2>
+        <div className="decision-grid">
+          <article className="decision-card">
+            <div className="decision-header">
+              <h3>Priority Blend ({formatDateLabel(analysisDate)})</h3>
+              <span
+                className={`state-pill ${
+                  selectedDecision?.state ? selectedDecision.state.toLowerCase() : "unknown"
+                }`}
+              >
+                {selectedDecision?.state || "--"}
+              </span>
+            </div>
+            <p className="decision-action">
+              {selectedDecision?.action || "Waiting for weather + lead baseline data."}
+            </p>
+            <p className="subtle">
+              Actual Leads: {formatNumber(selectedDecision?.actualLeads, 0)} | Expected:{" "}
+              {formatNumber(selectedDecision?.expectedLeads, 0)} | Delta:{" "}
+              {formatNumber(selectedDecision?.leadDelta, 1)}
+            </p>
+            <ul className="decision-reasons">
+              {(selectedDecision?.reasons || ["No decision factors available for this day."]).map(
+                (reason, index) => (
+                  <li key={`${reason}-${index}`}>{reason}</li>
+                ),
+              )}
+            </ul>
+          </article>
+
+          <article className="decision-card">
+            <div className="decision-header">
+              <h3>Selected Market ({marketLabel(selectedRadarMarket) || selectedMarket})</h3>
+              <span
+                className={`state-pill ${
+                  selectedMarketDecision?.state ? selectedMarketDecision.state.toLowerCase() : "unknown"
+                }`}
+              >
+                {selectedMarketDecision?.state || "--"}
+              </span>
+            </div>
+            <p className="decision-action">
+              {selectedMarketDecision?.action || "Waiting for selected market weather data."}
+            </p>
+            <p className="subtle">
+              Max Temp: {formatTemp(selectedWeather?.selectedDay?.tempmax, 0)} | Snow Depth:{" "}
+              {formatNumber(selectedWeather?.selectedDay?.snowdepth, 2)} in | Precip:{" "}
+              {formatNumber(selectedWeather?.selectedDay?.precip, 2)} in
+            </p>
+            <ul className="decision-reasons">
+              {(selectedMarketDecision?.reasons || ["No market-specific signal yet."]).map(
+                (reason, index) => (
+                <li key={`${reason}-${index}`}>{reason}</li>
+                ),
+              )}
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section className="panel">
         <h2>AI Strategy Assistant</h2>
         <form onSubmit={askCopilot} className="chat-form">
           <textarea
@@ -810,6 +987,210 @@ export default function HomePage() {
                 />
               </ComposedChart>
             </ResponsiveContainer>
+          </div>
+        )}
+      </section>
+
+      <section className="panel">
+        <div className="trend-header">
+          <h2>Weather-Normalized Goal Tracking</h2>
+          <p className="subtle">Expected leads are modeled from temp, UV, snow depth, and precipitation.</p>
+        </div>
+        {loadingLeads ? (
+          <p>Building weather-adjusted baseline...</p>
+        ) : (
+          <>
+            <div className="goal-summary">
+              <span>MAE: {formatNumber(goalTracking?.mae, 1)}</span>
+              <span>R²: {formatNumber(goalTracking?.rSquared, 2)}</span>
+            </div>
+            <div className="chart-wrap">
+              <ResponsiveContainer width="100%" height={340}>
+                <ComposedChart data={goalTrackingData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="dayKey" />
+                  <YAxis yAxisId="leads" domain={[0, goalAxisMax]} />
+                  <Tooltip />
+                  <Legend />
+                  <Bar yAxisId="leads" dataKey="actualLeads" name="Actual Leads" fill="#118257" />
+                  <Line
+                    yAxisId="leads"
+                    type="monotone"
+                    dataKey="expectedLeads"
+                    name="Expected Leads"
+                    stroke="#1f4f86"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                  <Line
+                    yAxisId="leads"
+                    type="monotone"
+                    dataKey="upperBand"
+                    name="Upper Band"
+                    stroke="#8a5cf5"
+                    strokeDasharray="4 4"
+                    dot={false}
+                  />
+                  <Line
+                    yAxisId="leads"
+                    type="monotone"
+                    dataKey="lowerBand"
+                    name="Lower Band"
+                    stroke="#8a5cf5"
+                    strokeDasharray="4 4"
+                    dot={false}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          </>
+        )}
+      </section>
+
+      <section className="panel">
+        <div className="trend-header">
+          <h2>Lag Effect (0-7 Day)</h2>
+          <div className="trend-controls">
+            <label>
+              Weather Metric
+              <select value={lagMetric} onChange={(event) => setLagMetric(event.target.value)}>
+                {LAG_METRIC_OPTIONS.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
+        {loadingLeads ? (
+          <p>Calculating lag effects...</p>
+        ) : (
+          <>
+            <p className="subtle">
+              Strongest lag signal:{" "}
+              {lagBest
+                ? `${lagBest.lag} day(s), correlation ${formatNumber(lagBest.correlation, 2)}`
+                : "Not enough data"}
+            </p>
+            <div className="chart-wrap lag-chart-wrap">
+              <ResponsiveContainer width="100%" height={300}>
+                <ComposedChart data={lagChartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="lag" />
+                  <YAxis yAxisId="corr" domain={[-1, 1]} />
+                  <YAxis yAxisId="sample" orientation="right" />
+                  <Tooltip />
+                  <Legend />
+                  <Bar
+                    yAxisId="corr"
+                    dataKey="correlation"
+                    name="Correlation to Leads"
+                    fill="#1f4f86"
+                    barSize={24}
+                  />
+                  <Line
+                    yAxisId="sample"
+                    type="monotone"
+                    dataKey="sampleSize"
+                    name="Sample Size"
+                    stroke="#118257"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          </>
+        )}
+      </section>
+
+      <section className="panel">
+        <h2>Weather Condition Performance Matrix</h2>
+        {loadingLeads ? (
+          <p>Summarizing condition buckets...</p>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Condition Bucket</th>
+                  <th>Days</th>
+                  <th>Avg Leads (Filtered)</th>
+                  <th>Avg Total Leads</th>
+                  <th>Avg DM Leads</th>
+                  <th>DM Mix</th>
+                  <th>Selected Source Share</th>
+                  <th>Avg Temp Max</th>
+                  <th>Avg Snow Depth</th>
+                  <th>Avg Precip</th>
+                </tr>
+              </thead>
+              <tbody>
+                {conditionMatrix.length ? (
+                  conditionMatrix.map((row) => (
+                    <tr key={row.key}>
+                      <td>{row.label}</td>
+                      <td>{row.days}</td>
+                      <td>{formatNumber(row.avgFilteredLeads, 1)}</td>
+                      <td>{formatNumber(row.avgTotalLeads, 1)}</td>
+                      <td>{formatNumber(row.avgDirectMailLeads, 1)}</td>
+                      <td>{formatPercent(row.directMailShare, 1)}</td>
+                      <td>{formatPercent(row.selectedSourceShare, 1)}</td>
+                      <td>{formatTemp(row.avgTempMax, 0)}</td>
+                      <td>{formatNumber(row.avgSnowDepth, 2)} in</td>
+                      <td>{formatNumber(row.avgPrecip, 2)} in</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={10}>No condition buckets available for this selection.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section className="panel">
+        <h2>Market Weather Elasticity Score (Priority Markets)</h2>
+        {loadingLeads ? (
+          <p>Calculating market sensitivity...</p>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Market</th>
+                  <th>Elasticity Score</th>
+                  <th>Temp Correlation</th>
+                  <th>Snow Correlation</th>
+                  <th>Precip Correlation</th>
+                  <th>Profile</th>
+                  <th>Sample Days</th>
+                </tr>
+              </thead>
+              <tbody>
+                {marketElasticity.length ? (
+                  marketElasticity.map((row) => (
+                    <tr key={row.marketName}>
+                      <td>{row.marketName}</td>
+                      <td>{formatNumber(row.elasticityScore, 1)}</td>
+                      <td>{formatNumber(row.temp?.correlation, 2)}</td>
+                      <td>{formatNumber(row.snowDepth?.correlation, 2)}</td>
+                      <td>{formatNumber(row.precip?.correlation, 2)}</td>
+                      <td>{row.profile}</td>
+                      <td>{row.sampleSize}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={7}>No market elasticity results yet.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         )}
       </section>

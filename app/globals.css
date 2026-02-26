@@ -212,6 +212,76 @@ button:disabled {
   font-weight: 600;
 }
 
+.decision-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.decision-card {
+  border: 1px solid #dce6ef;
+  border-radius: 10px;
+  padding: 12px;
+  background: #fbfdff;
+  display: grid;
+  gap: 8px;
+}
+
+.decision-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.decision-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #27435c;
+}
+
+.state-pill {
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.state-pill.go {
+  background: #e5f7ef;
+  color: #156c45;
+}
+
+.state-pill.caution {
+  background: #fff5df;
+  color: #9a6a00;
+}
+
+.state-pill.hold {
+  background: #ffe9e9;
+  color: #9f2525;
+}
+
+.state-pill.unknown {
+  background: #edf2f7;
+  color: #486177;
+}
+
+.decision-action {
+  margin: 0;
+  font-weight: 600;
+  color: #1f3b54;
+}
+
+.decision-reasons {
+  margin: 0;
+  padding-left: 18px;
+  color: #4c6478;
+  font-size: 0.84rem;
+  display: grid;
+  gap: 4px;
+}
+
 .chat-form {
   display: grid;
   gap: 8px;
@@ -245,6 +315,26 @@ button:disabled {
 .chart-wrap {
   width: 100%;
   height: 360px;
+}
+
+.lag-chart-wrap {
+  height: 300px;
+}
+
+.goal-summary {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+  color: #395266;
+  font-size: 0.84rem;
+}
+
+.goal-summary span {
+  border: 1px solid #dce6ef;
+  border-radius: 999px;
+  padding: 4px 10px;
+  background: #f7fbff;
 }
 
 .side-chart-grid {
@@ -351,6 +441,10 @@ th {
 
   .kpi-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .decision-grid {
+    grid-template-columns: 1fr;
   }
 }
 
