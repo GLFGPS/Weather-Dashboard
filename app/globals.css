@@ -96,6 +96,11 @@ textarea {
   gap: 8px;
 }
 
+.chart-compare-years {
+  margin-top: 6px;
+  margin-bottom: 8px;
+}
+
 .compare-years strong {
   font-size: 0.88rem;
   color: #38546d;
@@ -233,6 +238,10 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+.trend-controls label {
+  min-width: 150px;
+}
+
 .chart-wrap {
   width: 100%;
   height: 360px;
@@ -278,6 +287,22 @@ td {
 th {
   background: #f4f8fc;
   color: #36506a;
+}
+
+.table-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.table-header-row h2 {
+  margin-bottom: 0;
+}
+
+.table-header-row label {
+  min-width: 130px;
 }
 
 .daily-bar-track {
@@ -334,5 +359,10 @@ th {
 
   .trend-controls {
     width: 100%;
+  }
+
+  .table-header-row {
+    flex-direction: column;
+    align-items: stretch;
   }
 }

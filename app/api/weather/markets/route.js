@@ -207,6 +207,7 @@ export async function GET(request) {
 
     const { searchParams } = new URL(request.url);
     const mode = (searchParams.get("mode") || "priority").toLowerCase();
+    const includeMarket = searchParams.get("includeMarket")?.trim() || "";
     const requestedDate = parseAnalysisDate(searchParams.get("analysisDate"));
     const today = new Date();
     const analysisDate = requestedDate && requestedDate <= today ? requestedDate : today;
@@ -229,7 +230,13 @@ export async function GET(request) {
     }
 
     const priorityMarkets = pickPriorityMarkets(allMarkets);
-    const selectedMarkets = mode === "all" ? allMarkets : priorityMarkets;
+    let selectedMarkets = mode === "all" ? allMarkets : priorityMarkets;
+    if (includeMarket) {
+      const includeRow = allMarkets.find((market) => market.name === includeMarket);
+      if (includeRow && !selectedMarkets.some((market) => market.name === includeRow.name)) {
+        selectedMarkets = [...selectedMarkets, includeRow];
+      }
+    }
     const concurrency = mode === "all" ? 1 : 2;
 
     const rows = await mapWithConcurrency(selectedMarkets, concurrency, async (market) => {

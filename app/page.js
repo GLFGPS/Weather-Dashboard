@@ -34,6 +34,12 @@ const CHART_MODES = [
   { value: "toggle", label: "Year Toggle" },
 ];
 
+const WEATHER_LINE_OPTIONS = [
+  { key: "avgTempMax", label: "Avg Temp Max" },
+  { key: "avgUv", label: "Avg UV" },
+  { key: "avgSnowDepth", label: "Avg Snow Depth" },
+];
+
 const CHART_COLORS = ["#118257", "#1f4f86", "#8a5cf5", "#f08a24", "#da3f5f", "#0f766e"];
 
 function formatNumber(value, digits = 0) {
@@ -93,6 +99,8 @@ export default function HomePage() {
   const [sourceFilter, setSourceFilter] = useState("All Sources");
   const [chartMode, setChartMode] = useState("overlay");
   const [toggleYear, setToggleYear] = useState(null);
+  const [tableYear, setTableYear] = useState(null);
+  const [weatherLineMetric, setWeatherLineMetric] = useState("avgTempMax");
   const [fourthMetricKey, setFourthMetricKey] = useState("avgSnowDepth");
 
   const [marketWeather, setMarketWeather] = useState(null);
@@ -133,9 +141,30 @@ export default function HomePage() {
   const availableYears = leadsOverview?.availableYears || [];
   const sourceOptions = leadsOverview?.sourceOptions || ["All Sources"];
   const chartSeries = leadsOverview?.yearSeries || [];
+  const compareYearsForRequest = useMemo(() => {
+    const merged = new Set(compareYears);
+    if (tableYear) merged.add(tableYear);
+    return [...merged].sort((a, b) => a - b);
+  }, [compareYears, tableYear]);
+
+  const displaySeries = useMemo(() => {
+    if (!compareYears.length) return chartSeries;
+    const selected = new Set(compareYears);
+    const filtered = chartSeries.filter((series) => selected.has(series.year));
+    return filtered.length ? filtered : chartSeries;
+  }, [chartSeries, compareYears]);
+
   const selectedSeries =
     chartSeries.find((series) => series.year === selectedYear) || chartSeries[0] || null;
-  const maxDailyLead = Math.max(...(selectedSeries?.points || []).map((row) => row.filteredLeads), 0);
+  const tableSeries =
+    chartSeries.find((series) => series.year === tableYear) ||
+    selectedSeries ||
+    chartSeries[0] ||
+    null;
+  const maxDailyLead = Math.max(
+    ...(tableSeries?.points || []).map((row) => row.filteredLeads),
+    0,
+  );
 
   useEffect(() => {
     if (!locationOptions.length) return;
@@ -176,7 +205,9 @@ export default function HomePage() {
         const params = new URLSearchParams();
         if (selectedYear) params.set("year", String(selectedYear));
         if (sourceFilter) params.set("source", sourceFilter);
-        if (compareYears.length) params.set("compareYears", compareYears.join(","));
+        if (compareYearsForRequest.length) {
+          params.set("compareYears", compareYearsForRequest.join(","));
+        }
         const response = await fetch(`/api/leads/overview?${params.toString()}`, {
           cache: "no-store",
         });
@@ -206,6 +237,10 @@ export default function HomePage() {
         if (!toggleYear && payload.selectedYear) {
           setToggleYear(payload.selectedYear);
         }
+
+        if (!tableYear && payload.selectedYear) {
+          setTableYear(payload.selectedYear);
+        }
       } catch (error) {
         if (active) setLeadsError(error.message);
       } finally {
@@ -217,7 +252,7 @@ export default function HomePage() {
     return () => {
       active = false;
     };
-  }, [selectedYear, sourceFilter, compareYears]);
+  }, [selectedYear, sourceFilter, compareYearsForRequest]);
 
   useEffect(() => {
     if (!analysisDate) return;
@@ -229,6 +264,7 @@ export default function HomePage() {
         const params = new URLSearchParams({
           mode: showAllLocations ? "all" : "priority",
           analysisDate,
+          includeMarket: selectedMarket,
         });
         const response = await fetch(`/api/weather/markets?${params.toString()}`, {
           cache: "no-store",
@@ -246,7 +282,7 @@ export default function HomePage() {
     return () => {
       active = false;
     };
-  }, [analysisDate, showAllLocations]);
+  }, [analysisDate, showAllLocations, selectedMarket]);
 
   useEffect(() => {
     if (!analysisDate || !selectedMarket) return;
@@ -280,24 +316,29 @@ export default function HomePage() {
     };
   }, [selectedMarket, analysisDate]);
 
-  useEffect(() => {
-    if (!selectedYear) return;
-    setCompareYears((prev) => {
-      if (prev.includes(selectedYear)) return prev;
-      return [...prev, selectedYear].sort((a, b) => a - b);
-    });
-  }, [selectedYear]);
-
   function toggleCompareYear(year) {
     setCompareYears((prev) => {
       if (prev.includes(year)) {
-        if (year === selectedYear) return prev;
         const next = prev.filter((value) => value !== year);
-        return next.length ? next : [selectedYear];
+        return next.length ? next : prev;
       }
       return [...prev, year].sort((a, b) => a - b);
     });
   }
+
+  useEffect(() => {
+    if (!availableYears.length) return;
+    if (!tableYear || !availableYears.includes(tableYear)) {
+      setTableYear(selectedYear || availableYears[availableYears.length - 1]);
+    }
+  }, [availableYears, tableYear, selectedYear]);
+
+  useEffect(() => {
+    if (!displaySeries.length) return;
+    if (!toggleYear || !displaySeries.some((series) => series.year === toggleYear)) {
+      setToggleYear(displaySeries[0].year);
+    }
+  }, [displaySeries, toggleYear]);
 
   async function askCopilot(event) {
     event.preventDefault();
@@ -331,23 +372,27 @@ export default function HomePage() {
 
   const overlayData = useMemo(() => {
     const map = new Map();
-    for (const series of chartSeries) {
+    for (const series of displaySeries) {
       for (const point of series.points || []) {
         const row = map.get(point.dayKey) || { dayKey: point.dayKey };
         row[`leads_${series.year}`] = point.filteredLeads;
-        row[`temp_${series.year}`] = point.weather?.avgTempMax ?? null;
+        row[`weather_avgTempMax_${series.year}`] = point.weather?.avgTempMax ?? null;
+        row[`weather_avgUv_${series.year}`] = point.weather?.avgUv ?? null;
+        row[`weather_avgSnowDepth_${series.year}`] = point.weather?.avgSnowDepth ?? null;
         map.set(point.dayKey, row);
       }
     }
     return [...map.values()].sort((a, b) => a.dayKey.localeCompare(b.dayKey));
-  }, [chartSeries]);
+  }, [displaySeries]);
 
   const selectedRadarMarket =
     (marketWeather?.markets || []).find((market) => market.name === selectedMarket) || null;
   const yoyCards = selectedRadarMarket?.yoy || marketWeather?.overview?.yoyCards || {};
   const metricCard4 = yoyCards[fourthMetric.key] || null;
   const toggleSeries =
-    chartSeries.find((series) => series.year === Number(toggleYear)) || chartSeries[0] || null;
+    displaySeries.find((series) => series.year === Number(toggleYear)) ||
+    displaySeries[0] ||
+    null;
 
   return (
     <main className="analysis-page">
@@ -424,22 +469,6 @@ export default function HomePage() {
             <p className="subtle">
               Market radar values are rolling 7-day averages ending on selected date.
             </p>
-          </div>
-
-          <div className="compare-years">
-            <strong>Compare Years</strong>
-            <div className="compare-options">
-              {availableYears.map((year) => (
-                <label key={year} className="compare-pill">
-                  <input
-                    type="checkbox"
-                    checked={compareYears.includes(year)}
-                    onChange={() => toggleCompareYear(year)}
-                  />
-                  <span>{year}</span>
-                </label>
-              ))}
-            </div>
           </div>
         </article>
 
@@ -607,6 +636,20 @@ export default function HomePage() {
               </select>
             </label>
 
+            <label>
+              Weather Line
+              <select
+                value={weatherLineMetric}
+                onChange={(event) => setWeatherLineMetric(event.target.value)}
+              >
+                {WEATHER_LINE_OPTIONS.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
             {chartMode === "toggle" && (
               <label>
                 Display Year
@@ -614,7 +657,10 @@ export default function HomePage() {
                   value={toggleYear || selectedYear || ""}
                   onChange={(event) => setToggleYear(Number(event.target.value))}
                 >
-                  {(compareYears.length ? compareYears : availableYears).map((year) => (
+                  {(displaySeries.length
+                    ? displaySeries.map((series) => series.year)
+                    : availableYears
+                  ).map((year) => (
                     <option key={year} value={year}>
                       {year}
                     </option>
@@ -622,6 +668,22 @@ export default function HomePage() {
                 </select>
               </label>
             )}
+          </div>
+        </div>
+
+        <div className="compare-years chart-compare-years">
+          <strong>Compare Years</strong>
+          <div className="compare-options">
+            {availableYears.map((year) => (
+              <label key={year} className="compare-pill">
+                <input
+                  type="checkbox"
+                  checked={compareYears.includes(year)}
+                  onChange={() => toggleCompareYear(year)}
+                />
+                <span>{year}</span>
+              </label>
+            ))}
           </div>
         </div>
 
@@ -637,7 +699,7 @@ export default function HomePage() {
                 <YAxis yAxisId="temp" orientation="right" />
                 <Tooltip />
                 <Legend />
-                {chartSeries.map((series, index) => (
+                {displaySeries.map((series, index) => (
                   <Line
                     key={`leads-${series.year}`}
                     yAxisId="leads"
@@ -649,13 +711,16 @@ export default function HomePage() {
                     dot={false}
                   />
                 ))}
-                {chartSeries.map((series, index) => (
+                {displaySeries.map((series, index) => (
                   <Line
-                    key={`temp-${series.year}`}
+                    key={`weather-${series.year}`}
                     yAxisId="temp"
                     type="monotone"
-                    dataKey={`temp_${series.year}`}
-                    name={`${series.year} Avg Temp Max`}
+                    dataKey={`weather_${weatherLineMetric}_${series.year}`}
+                    name={`${series.year} ${
+                      WEATHER_LINE_OPTIONS.find((option) => option.key === weatherLineMetric)?.label ||
+                      "Weather"
+                    }`}
                     stroke={chartColor(index)}
                     strokeDasharray="6 3"
                     strokeWidth={1.8}
@@ -667,9 +732,7 @@ export default function HomePage() {
           </div>
         ) : chartMode === "side" ? (
           <div className="side-chart-grid">
-            {chartSeries
-              .filter((series) => compareYears.includes(series.year))
-              .map((series, index) => (
+            {displaySeries.map((series, index) => (
                 <article key={series.year} className="mini-chart-card">
                   <h3>{series.year}</h3>
                   <ResponsiveContainer width="100%" height={250}>
@@ -689,8 +752,11 @@ export default function HomePage() {
                       <Line
                         yAxisId="temp"
                         type="monotone"
-                        dataKey="weather.avgTempMax"
-                        name="Avg Temp Max"
+                        dataKey={`weather.${weatherLineMetric}`}
+                        name={
+                          WEATHER_LINE_OPTIONS.find((option) => option.key === weatherLineMetric)
+                            ?.label || "Weather"
+                        }
                         stroke="#1f4f86"
                         strokeWidth={2}
                         dot={false}
@@ -714,8 +780,11 @@ export default function HomePage() {
                 <Line
                   yAxisId="temp"
                   type="monotone"
-                  dataKey="weather.avgTempMax"
-                  name="Avg Temp Max"
+                  dataKey={`weather.${weatherLineMetric}`}
+                  name={
+                    WEATHER_LINE_OPTIONS.find((option) => option.key === weatherLineMetric)
+                      ?.label || "Weather"
+                  }
                   stroke="#1f4f86"
                   strokeWidth={2}
                   dot={false}
@@ -727,7 +796,22 @@ export default function HomePage() {
       </section>
 
       <section className="panel">
-        <h2>Leads by Date vs Weather</h2>
+        <div className="table-header-row">
+          <h2>Leads by Date vs Weather</h2>
+          <label>
+            Table Year
+            <select
+              value={tableYear || selectedYear || ""}
+              onChange={(event) => setTableYear(Number(event.target.value))}
+            >
+              {availableYears.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
         <div className="table-wrap">
           <table>
             <thead>
@@ -743,7 +827,7 @@ export default function HomePage() {
               </tr>
             </thead>
             <tbody>
-              {(selectedSeries?.points || []).map((point) => (
+              {(tableSeries?.points || []).map((point) => (
                 <tr key={point.date}>
                   <td>{point.date}</td>
                   <td>{point.filteredLeads}</td>
