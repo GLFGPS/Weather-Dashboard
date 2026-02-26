@@ -136,6 +136,64 @@ li {
   gap: 10px 20px;
 }
 
+.subtle {
+  color: #555;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  margin-top: 0;
+}
+
+.upload-form {
+  display: grid;
+  gap: 12px;
+}
+
+.upload-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.upload-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.upload-actions .subtle {
+  margin: 0;
+}
+
+.analysis-block {
+  margin-top: 12px;
+}
+
+.table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 520px;
+}
+
+th,
+td {
+  border: 1px solid #e8e8e8;
+  padding: 8px 10px;
+  font-size: 0.85rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  background: #f5f7fb;
+}
+
 .chat-form {
   display: grid;
   gap: 10px;
