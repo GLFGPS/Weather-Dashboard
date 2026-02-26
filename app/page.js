@@ -358,9 +358,16 @@ export default function HomePage() {
             <button type="button" onClick={() => setShowAllLocations((prev) => !prev)}>
               {showAllLocations ? "Show Key Locations" : "View All Locations"}
             </button>
-            <p className="subtle">
-              Market radar values are rolling 7-day averages ending on the selected date.
-            </p>
+            <div>
+              <p className="subtle">
+                Market radar values are rolling 7-day averages ending on the selected date.
+              </p>
+              <p className="subtle">
+                Storage: Weather{" "}
+                <strong>{(marketWeather?.storageModes || []).join(", ") || "--"}</strong> | Leads{" "}
+                <strong>{leadsOverview?.storage?.leads || "--"}</strong>
+              </p>
+            </div>
           </div>
         </article>
 
