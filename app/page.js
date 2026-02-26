@@ -108,6 +108,7 @@ export default function HomePage() {
   const [customLocation, setCustomLocation] = useState("");
   const [lookbackDays, setLookbackDays] = useState(21);
   const [marketSortMode, setMarketSortMode] = useState("headwind");
+  const [showAllLocations, setShowAllLocations] = useState(false);
 
   const [weather, setWeather] = useState(null);
   const [marketWeather, setMarketWeather] = useState(null);
@@ -252,8 +253,11 @@ export default function HomePage() {
       setMarketWeatherError("");
 
       try {
+        const mode = showAllLocations ? "all" : "priority";
+        const effectiveLookbackDays = showAllLocations ? 7 : lookbackDays;
         const params = new URLSearchParams({
-          lookbackDays: String(lookbackDays),
+          mode,
+          lookbackDays: String(effectiveLookbackDays),
         });
         const response = await fetch(`/api/weather/markets?${params.toString()}`, {
           cache: "no-store",
@@ -282,7 +286,7 @@ export default function HomePage() {
     return () => {
       active = false;
     };
-  }, [lookbackDays]);
+  }, [lookbackDays, showAllLocations]);
 
   async function handleUpload(event) {
     event.preventDefault();
@@ -466,13 +470,32 @@ export default function HomePage() {
       <section className="panel">
         <div className="panel-title-row">
           <h2>Market Weather Radar</h2>
-          <span className="subtle">
-            Cross-market snapshot for direct-mail timing decisions.
-          </span>
+          <div className="panel-actions">
+            <span className="subtle">
+              {showAllLocations
+                ? "All locations loaded (7-day lookback)."
+                : "Priority locations loaded first."}
+            </span>
+            {showAllLocations ? (
+              <button
+                type="button"
+                onClick={() => setShowAllLocations(false)}
+                className="secondary-button"
+              >
+                Show Priority Only
+              </button>
+            ) : (
+              <button type="button" onClick={() => setShowAllLocations(true)}>
+                Load All Locations (7 Days)
+              </button>
+            )}
+          </div>
         </div>
 
         {loadingMarketWeather ? (
-          <p>Loading all market weather...</p>
+          <p>
+            Loading {showAllLocations ? "all locations" : "priority locations"}...
+          </p>
         ) : (
           <>
             {(marketWeather?.errors || []).length > 0 && (

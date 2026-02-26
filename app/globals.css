@@ -144,6 +144,14 @@ textarea {
   gap: 8px;
 }
 
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .big {
   font-size: 1.9rem;
   margin: 2px 0 8px;
@@ -350,6 +358,12 @@ button {
 button:disabled {
   opacity: 0.7;
   cursor: wait;
+}
+
+.secondary-button {
+  background: #edf3ff;
+  color: #1747a0;
+  border: 1px solid #c5d6ff;
 }
 
 .chat-answer {

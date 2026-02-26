@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import { parse as parseCsv } from "csv-parse/sync";
+import { getOrFetchWeatherRange } from "../../../../lib/weather-cache";
 
 export const runtime = "nodejs";
-
-const VC_BASE_URL =
-  "https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline";
 
 const DEFAULT_DATE_CANDIDATES = [
   "EstimateRequestedDate",
@@ -235,43 +233,6 @@ async function parseRowsFromFile(file) {
   throw new Error("Unsupported file type. Upload .csv, .xlsx, or .xlsm.");
 }
 
-async function fetchWeatherTimeline(location, startDate, endDate, apiKey) {
-  const encodedLocation = encodeURIComponent(location);
-  const url =
-    `${VC_BASE_URL}/${encodedLocation}/${startDate}/${endDate}` +
-    `?unitGroup=us&include=days` +
-    `&elements=datetime,tempmax,tempmin,precip,snow,snowdepth,conditions` +
-    `&key=${apiKey}&contentType=json`;
-
-  const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(
-      `Weather timeline failed for ${location} (${response.status}): ${text.slice(
-        0,
-        200,
-      )}`,
-    );
-  }
-
-  const payload = await response.json();
-  const days = Array.isArray(payload.days) ? payload.days : [];
-  const byDate = new Map();
-  for (const day of days) {
-    if (!day?.datetime) continue;
-    byDate.set(day.datetime, {
-      tempmax: toNumber(day.tempmax),
-      tempmin: toNumber(day.tempmin),
-      precip: toNumber(day.precip) ?? 0,
-      snow: toNumber(day.snow) ?? 0,
-      snowdepth: toNumber(day.snowdepth) ?? 0,
-      conditions: day.conditions || null,
-    });
-  }
-
-  return byDate;
-}
-
 function buildTimingSignal(rows) {
   const withWeather = rows.filter((row) => row.weather);
   if (!withWeather.length) {
@@ -442,11 +403,24 @@ export async function POST(request) {
       const weatherPromises = [...marketRange.entries()].map(
         async ([market, range]) => {
           try {
-            const byDate = await fetchWeatherTimeline(
-              market,
-              range.start,
-              range.end,
-              weatherApiKey,
+            const weatherRange = await getOrFetchWeatherRange({
+              marketName: market,
+              startDate: range.start,
+              endDate: range.end,
+              apiKey: weatherApiKey,
+            });
+            const byDate = new Map(
+              (weatherRange.days || []).map((day) => [
+                day.datetime,
+                {
+                  tempmax: toNumber(day.tempmax),
+                  tempmin: toNumber(day.tempmin),
+                  precip: toNumber(day.precip) ?? 0,
+                  snow: toNumber(day.snow) ?? 0,
+                  snowdepth: toNumber(day.snowdepth) ?? 0,
+                  conditions: day.conditions || null,
+                },
+              ]),
             );
             weatherByMarket.set(market, byDate);
           } catch (error) {

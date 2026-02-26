@@ -1,19 +1,23 @@
 import { NextResponse } from "next/server";
 import { loadMarketsConfig } from "../../../../lib/markets";
+import {
+  formatISODate,
+  getOrFetchWeatherRange,
+  shiftDays,
+} from "../../../../lib/weather-cache";
 
 export const runtime = "nodejs";
 
-const VC_BASE_URL =
-  "https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline";
+const PRIORITY_MARKET_KEYWORDS = [
+  "west chester",
+  "north wales",
+  "hillsborough",
+  "lindenwold",
+];
 
-function toISODate(date) {
-  return date.toISOString().slice(0, 10);
-}
-
-function shiftDays(date, days) {
-  const shifted = new Date(date);
-  shifted.setUTCDate(shifted.getUTCDate() + days);
-  return shifted;
+function mean(values) {
+  if (!values.length) return null;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
 function toNumber(value) {
@@ -21,115 +25,95 @@ function toNumber(value) {
   return Number.isFinite(number) ? number : null;
 }
 
-function mean(values) {
-  if (!values.length) return null;
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
+function marketText(market) {
+  return `${market?.name || ""} ${market?.label || ""}`.toLowerCase();
+}
+
+function isPriorityMarket(market) {
+  const haystack = marketText(market);
+  return PRIORITY_MARKET_KEYWORDS.some((needle) => haystack.includes(needle));
+}
+
+function pickPriorityMarkets(markets) {
+  const picked = markets.filter((market) => isPriorityMarket(market));
+  if (picked.length) return picked;
+  return markets.slice(0, 4);
+}
+
+async function mapWithConcurrency(items, concurrency, mapper) {
+  const limit = Math.max(1, concurrency);
+  const results = new Array(items.length);
+  let cursor = 0;
+
+  async function worker() {
+    while (true) {
+      const index = cursor;
+      cursor += 1;
+      if (index >= items.length) return;
+      results[index] = await mapper(items[index], index);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
 }
 
 function classifyHeadwind(today, lookback, forecast) {
   let score = 0;
 
-  const todaySnow = today?.snow ?? 0;
-  const todaySnowDepth = today?.snowdepth ?? 0;
-  const todayTempMax = today?.tempmax ?? null;
-
-  if (todaySnow > 0) score += 2;
-  if (todaySnowDepth >= 0.5) score += 3;
+  if ((today?.snow ?? 0) > 0) score += 2;
+  if ((today?.snowdepth ?? 0) >= 0.5) score += 3;
   if ((lookback?.snowDays ?? 0) >= 3) score += 2;
   if ((lookback?.maxSnowDepth ?? 0) >= 0.75) score += 2;
-  if (todayTempMax !== null && todayTempMax < 42) score += 1;
+  if ((today?.tempmax ?? 99) < 42) score += 1;
   if ((lookback?.precipRate ?? 0) > 0.45) score += 1;
 
-  const forecastFreezingNights = (forecast || []).filter(
+  const freezingForecastNights = (forecast || []).filter(
     (day) => (day?.tempmin ?? 99) <= 30,
   ).length;
-  if (forecastFreezingNights >= 2) score += 1;
+  if (freezingForecastNights >= 2) score += 1;
 
-  let headwindLevel = "low";
-  let directMailSignal = "Conditions are generally favorable for normal cadence.";
-
+  let level = "low";
+  let signal = "Conditions are generally favorable for normal direct-mail cadence.";
   if (score >= 6) {
-    headwindLevel = "high";
-    directMailSignal =
-      "Hold or trim heavy direct-mail drops. Snow/cold headwinds likely suppress near-term conversion intent.";
+    level = "high";
+    signal =
+      "Hold or trim heavy direct-mail drops. Snow and cold headwinds can reduce near-term response intent.";
   } else if (score >= 3) {
-    headwindLevel = "medium";
-    directMailSignal =
+    level = "medium";
+    signal =
       "Use caution. Keep direct-mail active but prioritize higher-intent segments and stagger volume.";
   }
 
   return {
-    headwindLevel,
+    headwindLevel: level,
     headwindScore: score,
-    directMailSignal,
+    directMailSignal: signal,
   };
 }
 
-function formatDay(day) {
-  if (!day) return null;
-  return {
-    datetime: day.datetime,
-    temp: toNumber(day.temp),
-    tempmax: toNumber(day.tempmax),
-    tempmin: toNumber(day.tempmin),
-    humidity: toNumber(day.humidity),
-    precip: toNumber(day.precip) ?? 0,
-    precipprob: toNumber(day.precipprob),
-    snow: toNumber(day.snow) ?? 0,
-    snowdepth: toNumber(day.snowdepth) ?? 0,
-    conditions: day.conditions || null,
-  };
-}
-
-async function fetchMarketTimeline(location, startDate, endDate, apiKey) {
-  const encodedLocation = encodeURIComponent(location);
-  const url =
-    `${VC_BASE_URL}/${encodedLocation}/${startDate}/${endDate}` +
-    `?unitGroup=us&include=current,days` +
-    `&elements=datetime,temp,tempmax,tempmin,humidity,precip,precipprob,snow,snowdepth,conditions` +
-    `&key=${apiKey}&contentType=json`;
-
-  const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(
-      `Visual Crossing failed for ${location} (${response.status}): ${text.slice(
-        0,
-        180,
-      )}`,
-    );
+function buildMarketSummary(market, resolvedAddress, days, todayISO, requestedLookbackDays) {
+  const today =
+    days.find((day) => day.datetime === todayISO) || days[days.length - 1] || null;
+  if (!today) {
+    return null;
   }
 
-  return response.json();
-}
-
-function buildMarketSummary(market, timelinePayload, todayISO) {
-  const days = Array.isArray(timelinePayload.days) ? timelinePayload.days : [];
-  const todayRaw = days.find((day) => day?.datetime === todayISO) || days[days.length - 1];
-  const today = formatDay(todayRaw);
-
-  const lookbackDays = days
-    .filter((day) => day?.datetime && day.datetime <= todayISO)
-    .map((day) => formatDay(day))
-    .filter(Boolean);
-
-  const forecast = days
-    .filter((day) => day?.datetime && day.datetime > todayISO)
-    .slice(0, 3)
-    .map((day) => formatDay(day))
-    .filter(Boolean);
+  const lookbackDays = days.filter((day) => day.datetime <= todayISO);
+  const forecast = days.filter((day) => day.datetime > todayISO).slice(0, 3);
 
   const highs = lookbackDays
     .map((day) => day.tempmax)
-    .filter((value) => value !== null);
+    .filter((value) => value !== null && value !== undefined);
   const lows = lookbackDays
     .map((day) => day.tempmin)
-    .filter((value) => value !== null);
+    .filter((value) => value !== null && value !== undefined);
   const snowValues = lookbackDays.map((day) => day.snow ?? 0);
   const snowDepthValues = lookbackDays.map((day) => day.snowdepth ?? 0);
   const precipDays = lookbackDays.filter((day) => (day.precip ?? 0) > 0).length;
 
   const lookback = {
+    requestedDays: requestedLookbackDays,
     returnedDays: lookbackDays.length,
     avgHigh: mean(highs),
     avgLow: mean(lows),
@@ -146,41 +130,52 @@ function buildMarketSummary(market, timelinePayload, todayISO) {
 
   return {
     ...market,
-    location: timelinePayload.resolvedAddress || market.name,
-    today,
+    location: resolvedAddress || market.name,
+    today: {
+      datetime: today.datetime,
+      temp: toNumber(today.temp),
+      tempmax: toNumber(today.tempmax),
+      tempmin: toNumber(today.tempmin),
+      humidity: toNumber(today.humidity),
+      precip: toNumber(today.precip) ?? 0,
+      precipprob: toNumber(today.precipprob),
+      snow: toNumber(today.snow) ?? 0,
+      snowdepth: toNumber(today.snowdepth) ?? 0,
+      conditions: today.conditions || null,
+    },
     lookback,
-    forecast,
+    forecast: forecast.map((day) => ({
+      datetime: day.datetime,
+      temp: toNumber(day.temp),
+      tempmax: toNumber(day.tempmax),
+      tempmin: toNumber(day.tempmin),
+      humidity: toNumber(day.humidity),
+      precip: toNumber(day.precip) ?? 0,
+      precipprob: toNumber(day.precipprob),
+      snow: toNumber(day.snow) ?? 0,
+      snowdepth: toNumber(day.snowdepth) ?? 0,
+      conditions: day.conditions || null,
+    })),
     ...headwind,
   };
 }
 
 function buildOverview(markets) {
-  const totalMarkets = markets.length;
-  const highHeadwinds = markets.filter((market) => market.headwindLevel === "high")
-    .length;
-  const mediumHeadwinds = markets.filter(
-    (market) => market.headwindLevel === "medium",
-  ).length;
-  const lowHeadwinds = markets.filter((market) => market.headwindLevel === "low").length;
-
-  const avgTodayTemp = mean(
-    markets
-      .map((market) => market.today?.temp)
-      .filter((value) => value !== null && value !== undefined),
-  );
-  const avgSnowDepth = mean(
-    markets
-      .map((market) => market.today?.snowdepth ?? 0)
-      .filter((value) => value !== null && value !== undefined),
-  );
-
   return {
-    totalMarkets,
-    highHeadwinds,
-    mediumHeadwinds,
-    lowHeadwinds,
-    avgTodayTemp,
-    avgSnowDepth,
+    totalMarkets: markets.length,
+    highHeadwinds: markets.filter((market) => market.headwindLevel === "high").length,
+    mediumHeadwinds: markets.filter((market) => market.headwindLevel === "medium").length,
+    lowHeadwinds: markets.filter((market) => market.headwindLevel === "low").length,
+    avgTodayTemp: mean(
+      markets
+        .map((market) => market.today?.temp)
+        .filter((value) => value !== null && value !== undefined),
+    ),
+    avgSnowDepth: mean(
+      markets
+        .map((market) => market.today?.snowdepth ?? 0)
+        .filter((value) => value !== null && value !== undefined),
+    ),
   };
 }
 
@@ -198,61 +193,85 @@ export async function GET(request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const lookbackRequested = Number.parseInt(
-      searchParams.get("lookbackDays") || "14",
+    const mode = (searchParams.get("mode") || "priority").toLowerCase();
+    const requestedLookbackRaw = Number.parseInt(
+      searchParams.get("lookbackDays") || "21",
       10,
     );
-    const lookbackDays = Number.isFinite(lookbackRequested)
-      ? Math.min(120, Math.max(7, lookbackRequested))
-      : 14;
+    const requestedLookbackDays = Number.isFinite(requestedLookbackRaw)
+      ? Math.min(120, Math.max(7, requestedLookbackRaw))
+      : 21;
 
-    const maxMarketsRequested = Number.parseInt(
-      searchParams.get("maxMarkets") || "50",
-      10,
-    );
-    const maxMarkets = Number.isFinite(maxMarketsRequested)
-      ? Math.min(100, Math.max(1, maxMarketsRequested))
-      : 50;
+    const effectiveLookbackDays = mode === "all" ? 7 : requestedLookbackDays;
 
     const marketsConfig = await loadMarketsConfig();
-    const markets = (marketsConfig.markets || []).slice(0, maxMarkets);
-
-    if (!markets.length) {
+    const allMarkets = Array.isArray(marketsConfig.markets) ? marketsConfig.markets : [];
+    if (!allMarkets.length) {
       return NextResponse.json(
         { error: "No markets found in market configuration." },
         { status: 400 },
       );
     }
 
-    const now = new Date();
-    const todayISO = toISODate(now);
-    const startDate = toISODate(shiftDays(now, -(lookbackDays - 1)));
-    const endDate = toISODate(shiftDays(now, 3));
+    const priorityMarkets = pickPriorityMarkets(allMarkets);
+    const selectedMarkets =
+      mode === "all"
+        ? allMarkets
+        : priorityMarkets;
 
-    const settled = await Promise.allSettled(
-      markets.map(async (market) => {
-        const payload = await fetchMarketTimeline(market.name, startDate, endDate, apiKey);
-        return buildMarketSummary(market, payload, todayISO);
-      }),
+    const now = new Date();
+    const todayISO = formatISODate(now);
+    const startDate = formatISODate(shiftDays(now, -(effectiveLookbackDays - 1)));
+    const endDate = formatISODate(shiftDays(now, 3));
+
+    const concurrency = mode === "all" ? 1 : 2;
+
+    const taskResults = await mapWithConcurrency(
+      selectedMarkets,
+      concurrency,
+      async (market) => {
+        try {
+          const result = await getOrFetchWeatherRange({
+            marketName: market.name,
+            startDate,
+            endDate,
+            apiKey,
+          });
+
+          const summary = buildMarketSummary(
+            market,
+            result.resolvedAddress,
+            result.days,
+            todayISO,
+            effectiveLookbackDays,
+          );
+
+          return {
+            ok: true,
+            market: summary,
+            storage: result.storage,
+          };
+        } catch (error) {
+          return {
+            ok: false,
+            error: error.message || "Unknown weather fetch failure.",
+            marketName: market.name,
+          };
+        }
+      },
     );
 
-    const marketResults = [];
-    const errors = [];
+    const markets = taskResults
+      .filter((entry) => entry.ok && entry.market)
+      .map((entry) => entry.market);
+    const errors = taskResults
+      .filter((entry) => !entry.ok)
+      .map((entry) => ({
+        market: entry.marketName,
+        error: entry.error,
+      }));
 
-    for (let index = 0; index < settled.length; index += 1) {
-      const result = settled[index];
-      if (result.status === "fulfilled") {
-        marketResults.push(result.value);
-      } else {
-        const name = markets[index]?.name || `market-${index + 1}`;
-        errors.push({
-          market: name,
-          error: result.reason?.message || "Unknown weather fetch failure.",
-        });
-      }
-    }
-
-    if (!marketResults.length) {
+    if (!markets.length) {
       return NextResponse.json(
         {
           error:
@@ -263,13 +282,22 @@ export async function GET(request) {
       );
     }
 
+    const storageModes = [...new Set(taskResults.filter((entry) => entry.ok).map((entry) => entry.storage))];
+
     return NextResponse.json({
       source: marketsConfig.source,
       updatedAt: marketsConfig.updatedAt || null,
       fetchedAt: new Date().toISOString(),
-      lookbackDays,
-      overview: buildOverview(marketResults),
-      markets: marketResults,
+      mode,
+      requestedLookbackDays,
+      lookbackDays: effectiveLookbackDays,
+      priorityMarketNames: priorityMarkets.map((market) => market.name),
+      selectedMarketCount: selectedMarkets.length,
+      totalConfiguredMarkets: allMarkets.length,
+      remainingMarkets: Math.max(allMarkets.length - selectedMarkets.length, 0),
+      storageModes,
+      overview: buildOverview(markets),
+      markets,
       errors,
     });
   } catch (error) {

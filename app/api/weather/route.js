@@ -1,44 +1,13 @@
 import { NextResponse } from "next/server";
-
-const VC_BASE_URL =
-  "https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline";
-
-function toISODate(date) {
-  return date.toISOString().slice(0, 10);
-}
-
-function shiftDays(date, days) {
-  const shifted = new Date(date);
-  shifted.setUTCDate(shifted.getUTCDate() + days);
-  return shifted;
-}
-
-function toNumber(value) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : null;
-}
-
-function formatDay(day) {
-  if (!day) return null;
-
-  return {
-    datetime: day.datetime,
-    tempmax: toNumber(day.tempmax),
-    tempmin: toNumber(day.tempmin),
-    temp: toNumber(day.temp),
-    humidity: toNumber(day.humidity),
-    precipprob: toNumber(day.precipprob),
-    precip: toNumber(day.precip),
-    snow: toNumber(day.snow) ?? 0,
-    snowdepth: toNumber(day.snowdepth) ?? 0,
-    conditions: day.conditions || null,
-  };
-}
+import {
+  formatISODate,
+  getOrFetchWeatherRange,
+  shiftDays,
+} from "../../../lib/weather-cache";
 
 function mean(values) {
   if (!values.length) return null;
-  const total = values.reduce((sum, item) => sum + item, 0);
-  return total / values.length;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
 function ordinal(value) {
@@ -52,32 +21,9 @@ function ordinal(value) {
 
 function rank(values, target, desc = true) {
   if (!values.length || target === null || target === undefined) return null;
-
   const sorted = [...values].sort((a, b) => (desc ? b - a : a - b));
-  const index = sorted.findIndex((item) => item === target);
-  if (index === -1) return null;
-  return index + 1;
-}
-
-async function fetchTimeline(location, startDate, endDate, apiKey) {
-  const encodedLocation = encodeURIComponent(location);
-  const pathDate = endDate
-    ? `${startDate}/${endDate}`
-    : `${startDate}/${startDate}`;
-
-  const url =
-    `${VC_BASE_URL}/${encodedLocation}/${pathDate}` +
-    `?unitGroup=us&include=current,days` +
-    `&elements=datetime,tempmax,tempmin,temp,humidity,precipprob,precip,snow,snowdepth,conditions,feelslike,windspeed,winddir,sunrise,sunset,uvindex` +
-    `&key=${apiKey}&contentType=json`;
-
-  const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Visual Crossing request failed (${response.status}): ${text}`);
-  }
-
-  return response.json();
+  const index = sorted.findIndex((value) => value === target);
+  return index >= 0 ? index + 1 : null;
 }
 
 export async function GET(request) {
@@ -105,26 +51,23 @@ export async function GET(request) {
 
     const now = new Date();
     const currentYear = now.getUTCFullYear();
-    const todayISO = toISODate(now);
-    const forecastEndISO = toISODate(shiftDays(now, 3));
-    const lookbackStartISO = toISODate(shiftDays(now, -(lookbackDays - 1)));
+    const todayISO = formatISODate(now);
+    const forecastEndISO = formatISODate(shiftDays(now, 3));
+    const lookbackStartISO = formatISODate(shiftDays(now, -(lookbackDays - 1)));
 
-    const sameDayDates = Array.from({ length: 4 }, (_, index) => {
-      const date = new Date(now);
-      date.setUTCFullYear(currentYear - (index + 1));
-      return toISODate(date);
+    const primaryRange = await getOrFetchWeatherRange({
+      marketName: location,
+      startDate: lookbackStartISO,
+      endDate: forecastEndISO,
+      apiKey,
     });
 
-    const weatherRequests = [
-      fetchTimeline(location, todayISO, forecastEndISO, apiKey),
-      fetchTimeline(location, lookbackStartISO, todayISO, apiKey),
-      ...sameDayDates.map((date) => fetchTimeline(location, date, null, apiKey)),
-    ];
+    const allDays = primaryRange.days || [];
+    const today =
+      allDays.find((day) => day.datetime === todayISO) ||
+      allDays[allDays.length - 1] ||
+      null;
 
-    const [todayAndForecast, lookbackSeries, ...sameDayHistoryRaw] =
-      await Promise.all(weatherRequests);
-
-    const today = formatDay(todayAndForecast.days?.[0]);
     if (!today) {
       return NextResponse.json(
         { error: "No weather data returned for requested location." },
@@ -132,62 +75,73 @@ export async function GET(request) {
       );
     }
 
-    const forecast = (todayAndForecast.days || [])
-      .slice(1, 4)
-      .map((day) => formatDay(day))
-      .filter(Boolean);
+    const forecast = allDays
+      .filter((day) => day.datetime > todayISO)
+      .slice(0, 3)
+      .map((day) => ({
+        datetime: day.datetime,
+        temp: day.temp,
+        tempmax: day.tempmax,
+        tempmin: day.tempmin,
+        humidity: day.humidity,
+        precip: day.precip,
+        precipprob: day.precipprob,
+        snow: day.snow,
+        snowdepth: day.snowdepth,
+        conditions: day.conditions,
+      }));
 
-    const currentConditions = todayAndForecast.currentConditions || {};
-    const current = {
-      feelslike: toNumber(currentConditions.feelslike),
-      humidity: toNumber(currentConditions.humidity),
-      windspeed: toNumber(currentConditions.windspeed),
-      winddir: toNumber(currentConditions.winddir),
-      sunrise: currentConditions.sunrise || null,
-      sunset: currentConditions.sunset || null,
-      uvindex: toNumber(currentConditions.uvindex),
-    };
+    const lookbackSeries = allDays.filter(
+      (day) => day.datetime >= lookbackStartISO && day.datetime <= todayISO,
+    );
 
-    const lookbackDaysSeries = (lookbackSeries.days || [])
-      .map((day) => formatDay(day))
-      .filter(Boolean);
-
-    const highValues = lookbackDaysSeries
+    const highs = lookbackSeries
       .map((day) => day.tempmax)
-      .filter((value) => value !== null);
-    const lowValues = lookbackDaysSeries
+      .filter((value) => value !== null && value !== undefined);
+    const lows = lookbackSeries
       .map((day) => day.tempmin)
-      .filter((value) => value !== null);
-    const snowValues = lookbackDaysSeries
-      .map((day) => day.snow ?? 0)
-      .filter((value) => value !== null);
-    const snowDepthValues = lookbackDaysSeries
-      .map((day) => day.snowdepth ?? 0)
-      .filter((value) => value !== null);
+      .filter((value) => value !== null && value !== undefined);
+    const snowValues = lookbackSeries.map((day) => day.snow ?? 0);
+    const snowDepthValues = lookbackSeries.map((day) => day.snowdepth ?? 0);
 
     const lookback = {
       requestedDays: lookbackDays,
-      returnedDays: lookbackDaysSeries.length,
-      avgHigh: mean(highValues),
-      avgLow: mean(lowValues),
-      precipDays: lookbackDaysSeries.filter((day) => (day.precip ?? 0) > 0).length,
-      snowDays: lookbackDaysSeries.filter(
+      returnedDays: lookbackSeries.length,
+      avgHigh: mean(highs),
+      avgLow: mean(lows),
+      precipDays: lookbackSeries.filter((day) => (day.precip ?? 0) > 0).length,
+      snowDays: lookbackSeries.filter(
         (day) => (day.snow ?? 0) > 0 || (day.snowdepth ?? 0) > 0,
       ).length,
       totalSnow: snowValues.reduce((sum, value) => sum + value, 0),
       maxSnowDepth: snowDepthValues.length ? Math.max(...snowDepthValues) : 0,
     };
 
-    const sameDayHistory = sameDayHistoryRaw.map((entry, index) => {
-      const day = formatDay(entry.days?.[0]);
-      if (!day) return null;
-      return {
-        year: currentYear - (index + 1),
-        ...day,
-      };
+    const sameDayDates = Array.from({ length: 4 }, (_, index) => {
+      const past = new Date(now);
+      past.setUTCFullYear(currentYear - (index + 1));
+      return formatISODate(past);
     });
 
+    const sameDayHistory = [];
+    for (let index = 0; index < sameDayDates.length; index += 1) {
+      const date = sameDayDates[index];
+      const data = await getOrFetchWeatherRange({
+        marketName: location,
+        startDate: date,
+        endDate: date,
+        apiKey,
+      });
+      const day = data.days[0];
+      if (!day) continue;
+      sameDayHistory.push({
+        year: currentYear - (index + 1),
+        ...day,
+      });
+    }
+
     const sameDayLastYear = sameDayHistory[0] || null;
+
     const sameDayPool = [
       {
         year: currentYear,
@@ -195,51 +149,60 @@ export async function GET(request) {
         tempmin: today.tempmin,
         humidity: today.humidity,
       },
-      ...sameDayHistory.map((entry) => ({
-        year: entry?.year,
-        tempmax: entry?.tempmax ?? null,
-        tempmin: entry?.tempmin ?? null,
-        humidity: entry?.humidity ?? null,
+      ...sameDayHistory.map((day) => ({
+        year: day.year,
+        tempmax: day.tempmax,
+        tempmin: day.tempmin,
+        humidity: day.humidity,
       })),
     ];
 
-    const sameDayHighValues = sameDayPool
-      .map((entry) => entry.tempmax)
-      .filter((value) => value !== null);
-    const sameDayLowValues = sameDayPool
-      .map((entry) => entry.tempmin)
-      .filter((value) => value !== null);
-    const sameDayHumidityValues = sameDayPool
-      .map((entry) => entry.humidity)
-      .filter((value) => value !== null);
+    const sameDayHighs = sameDayPool
+      .map((row) => row.tempmax)
+      .filter((value) => value !== null && value !== undefined);
+    const sameDayLows = sameDayPool
+      .map((row) => row.tempmin)
+      .filter((value) => value !== null && value !== undefined);
+    const sameDayHumidities = sameDayPool
+      .map((row) => row.humidity)
+      .filter((value) => value !== null && value !== undefined);
 
-    const highRank = rank(sameDayHighValues, today.tempmax, true);
-    const lowRank = rank(sameDayLowValues, today.tempmin, false);
-    const humidityRank = rank(sameDayHumidityValues, today.humidity, true);
+    const highRank = rank(sameDayHighs, today.tempmax, true);
+    const lowRank = rank(sameDayLows, today.tempmin, false);
+    const humidityRank = rank(sameDayHumidities, today.humidity, true);
 
     const sameDayFiveYear = {
-      avgHigh: mean(sameDayHighValues),
-      avgLow: mean(sameDayLowValues),
-      avgHumidity: mean(sameDayHumidityValues),
+      avgHigh: mean(sameDayHighs),
+      avgLow: mean(sameDayLows),
+      avgHumidity: mean(sameDayHumidities),
       highRank,
       lowRank,
       humidityRank,
       highRankText: highRank
-        ? `Rank: ${highRank}${ordinal(highRank)} highest in ${sameDayHighValues.length} years`
+        ? `Rank: ${highRank}${ordinal(highRank)} highest in ${sameDayHighs.length} years`
         : "Not enough high temperature history.",
       lowRankText: lowRank
-        ? `Rank: ${lowRank}${ordinal(lowRank)} lowest in ${sameDayLowValues.length} years`
+        ? `Rank: ${lowRank}${ordinal(lowRank)} lowest in ${sameDayLows.length} years`
         : "Not enough low temperature history.",
       humidityRankText: humidityRank
-        ? `Rank: ${humidityRank}${ordinal(humidityRank)} highest in ${sameDayHumidityValues.length} years`
+        ? `Rank: ${humidityRank}${ordinal(humidityRank)} highest in ${sameDayHumidities.length} years`
         : "Not enough humidity history.",
     };
 
     return NextResponse.json({
-      location: todayAndForecast.resolvedAddress || location,
+      location: primaryRange.resolvedAddress || location,
       fetchedAt: new Date().toISOString(),
+      storage: primaryRange.storage,
       today,
-      current,
+      current: {
+        feelslike: today.feelslike,
+        humidity: today.humidity,
+        windspeed: today.windspeed,
+        winddir: today.winddir,
+        sunrise: today.sunrise,
+        sunset: today.sunset,
+        uvindex: today.uvindex,
+      },
       forecast,
       lookback,
       sameDayLastYear,

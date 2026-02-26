@@ -16,9 +16,11 @@ For production/internal use, secrets should stay server-side.
   1. `GMB Locations.csv` (if present)
   2. `data/markets.json` fallback
 - Manual lead upload + aggregation endpoint (`/api/analysis/upload`)
+- Neon-backed weather cache table (`weather_daily`) for reusable market/date weather rows
 - Dashboard UI with:
   - quick lookback windows
-  - multi-location weather radar from all configured locations
+  - priority-first weather radar (West Chester, North Wales, Hillsborough, Lindenwold)
+  - "Load All Locations" on demand (7-day all-market pull)
   - same-day historical ranking
   - file upload analysis for historical lead exports (CSV/XLSX)
 
@@ -62,6 +64,7 @@ For production/internal use, secrets should stay server-side.
 - `VISUAL_CROSSING_API_KEY`
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL` (optional, default: `gpt-4.1-mini`)
+- Neon Postgres values (`POSTGRES_URL` / `DATABASE_URL`) from Vercel Storage integration
 
 ## Internal + private recommendations (no app login)
 
@@ -133,7 +136,7 @@ Upload processing:
 
 1. Parse rows from file
 2. Aggregate to daily market-level lead metrics
-3. Join weather metrics by market and date (Visual Crossing)
+3. Join weather metrics by market and date (from Neon cache or Visual Crossing + cache write)
 4. Return market timing signals for direct-mail planning
 
 ## Legacy files
