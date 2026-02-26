@@ -12,7 +12,6 @@ For production/internal use, secrets should stay server-side.
 - Weather endpoint proxy for Visual Crossing (`/api/weather`)
 - Multi-market weather radar endpoint (`/api/weather/markets`)
 - OpenAI conversational endpoint (`/api/chat`)
-- 2022 workbook summary endpoint (`/api/analysis/seed-2022`)
 - GitHub-backed market configuration endpoint (`/api/markets`) that prefers:
   1. `GMB Locations.csv` (if present)
   2. `data/markets.json` fallback
@@ -21,7 +20,6 @@ For production/internal use, secrets should stay server-side.
   - quick lookback windows
   - multi-location weather radar from all configured locations
   - same-day historical ranking
-  - sample direct-mail + snow impact context from 2022 data
   - file upload analysis for historical lead exports (CSV/XLSX)
 
 ## Local development

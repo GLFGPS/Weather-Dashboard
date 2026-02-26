@@ -111,16 +111,13 @@ export default function HomePage() {
 
   const [weather, setWeather] = useState(null);
   const [marketWeather, setMarketWeather] = useState(null);
-  const [analysis2022, setAnalysis2022] = useState(null);
   const [uploadedAnalysis, setUploadedAnalysis] = useState(null);
 
   const [loadingWeather, setLoadingWeather] = useState(true);
   const [loadingMarketWeather, setLoadingMarketWeather] = useState(true);
-  const [loading2022, setLoading2022] = useState(true);
 
   const [weatherError, setWeatherError] = useState("");
   const [marketWeatherError, setMarketWeatherError] = useState("");
-  const [analysisError, setAnalysisError] = useState("");
   const [uploadError, setUploadError] = useState("");
 
   const [uploadFile, setUploadFile] = useState(null);
@@ -287,43 +284,6 @@ export default function HomePage() {
     };
   }, [lookbackDays]);
 
-  useEffect(() => {
-    let active = true;
-
-    async function load2022Analysis() {
-      setLoading2022(true);
-      setAnalysisError("");
-
-      try {
-        const response = await fetch("/api/analysis/seed-2022", {
-          cache: "no-store",
-        });
-        const payload = await response.json();
-        if (!response.ok) {
-          throw new Error(payload.error || "Unable to load 2022 analysis.");
-        }
-
-        if (active) {
-          setAnalysis2022(payload);
-        }
-      } catch (error) {
-        if (active) {
-          setAnalysis2022(null);
-          setAnalysisError(error.message);
-        }
-      } finally {
-        if (active) {
-          setLoading2022(false);
-        }
-      }
-    }
-
-    load2022Analysis();
-    return () => {
-      active = false;
-    };
-  }, []);
-
   async function handleUpload(event) {
     event.preventDefault();
     if (!uploadFile) {
@@ -381,7 +341,6 @@ export default function HomePage() {
             marketRadar: marketWeather,
           },
           analysisContext: {
-            seed2022: analysis2022,
             uploaded: uploadedAnalysis,
           },
         }),
@@ -502,7 +461,6 @@ export default function HomePage() {
       {marketsError && <p className="error">{marketsError}</p>}
       {weatherError && <p className="error">{weatherError}</p>}
       {marketWeatherError && <p className="error">{marketWeatherError}</p>}
-      {analysisError && <p className="error">{analysisError}</p>}
       {uploadError && <p className="error">{uploadError}</p>}
 
       <section className="panel">
@@ -683,29 +641,6 @@ export default function HomePage() {
       </section>
 
       <section className="grid two-panel">
-        <article className="panel">
-          <h2>2022 Seed Snapshot</h2>
-          {loading2022 ? (
-            <p>Loading 2022 seed analysis...</p>
-          ) : analysis2022 ? (
-            <>
-              <p>
-                Leads: {formatNumber(analysis2022?.leads?.total)} | Direct Mail:{" "}
-                {formatNumber(analysis2022?.leads?.directMail?.total)} (
-                {formatPercent(analysis2022?.leads?.directMail?.pctOfTotal, 2)})
-              </p>
-              <p>
-                Avg leads on snow days:{" "}
-                {formatNumber(analysis2022?.weatherImpact?.avgLeadsOnSnowDays, 2)} | on
-                non-snow days:{" "}
-                {formatNumber(analysis2022?.weatherImpact?.avgLeadsOnNonSnowDays, 2)}
-              </p>
-            </>
-          ) : (
-            <p>No analysis data found.</p>
-          )}
-        </article>
-
         <article className="panel">
           <h2>Ask OpenAI (Strategy Copilot)</h2>
           <form onSubmit={askCopilot} className="chat-form">
