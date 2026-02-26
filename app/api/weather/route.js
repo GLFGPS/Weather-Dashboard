@@ -41,6 +41,10 @@ export async function GET(request) {
 
     const { searchParams } = new URL(request.url);
     const location = searchParams.get("location")?.trim() || "West Chester,PA";
+    const analysisDateInput = searchParams.get("analysisDate")?.trim();
+    const parsedAnalysisDate = analysisDateInput
+      ? new Date(`${analysisDateInput}T00:00:00Z`)
+      : null;
     const lookbackRequested = Number.parseInt(
       searchParams.get("lookbackDays") || "30",
       10,
@@ -50,10 +54,14 @@ export async function GET(request) {
       : 30;
 
     const now = new Date();
-    const currentYear = now.getUTCFullYear();
-    const todayISO = formatISODate(now);
-    const forecastEndISO = formatISODate(shiftDays(now, 3));
-    const lookbackStartISO = formatISODate(shiftDays(now, -(lookbackDays - 1)));
+    const anchorDate =
+      parsedAnalysisDate && !Number.isNaN(parsedAnalysisDate.getTime()) && parsedAnalysisDate <= now
+        ? parsedAnalysisDate
+        : now;
+    const currentYear = anchorDate.getUTCFullYear();
+    const analysisDateISO = formatISODate(anchorDate);
+    const forecastEndISO = formatISODate(shiftDays(anchorDate, 3));
+    const lookbackStartISO = formatISODate(shiftDays(anchorDate, -(lookbackDays - 1)));
 
     const primaryRange = await getOrFetchWeatherRange({
       marketName: location,
@@ -63,12 +71,12 @@ export async function GET(request) {
     });
 
     const allDays = primaryRange.days || [];
-    const today =
-      allDays.find((day) => day.datetime === todayISO) ||
+    const selectedDay =
+      allDays.find((day) => day.datetime === analysisDateISO) ||
       allDays[allDays.length - 1] ||
       null;
 
-    if (!today) {
+    if (!selectedDay) {
       return NextResponse.json(
         { error: "No weather data returned for requested location." },
         { status: 502 },
@@ -76,7 +84,7 @@ export async function GET(request) {
     }
 
     const forecast = allDays
-      .filter((day) => day.datetime > todayISO)
+      .filter((day) => day.datetime > analysisDateISO)
       .slice(0, 3)
       .map((day) => ({
         datetime: day.datetime,
@@ -92,7 +100,7 @@ export async function GET(request) {
       }));
 
     const lookbackSeries = allDays.filter(
-      (day) => day.datetime >= lookbackStartISO && day.datetime <= todayISO,
+      (day) => day.datetime >= lookbackStartISO && day.datetime <= analysisDateISO,
     );
 
     const highs = lookbackSeries
@@ -118,7 +126,7 @@ export async function GET(request) {
     };
 
     const sameDayDates = Array.from({ length: 4 }, (_, index) => {
-      const past = new Date(now);
+      const past = new Date(anchorDate);
       past.setUTCFullYear(currentYear - (index + 1));
       return formatISODate(past);
     });
@@ -145,9 +153,9 @@ export async function GET(request) {
     const sameDayPool = [
       {
         year: currentYear,
-        tempmax: today.tempmax,
-        tempmin: today.tempmin,
-        humidity: today.humidity,
+        tempmax: selectedDay.tempmax,
+        tempmin: selectedDay.tempmin,
+        humidity: selectedDay.humidity,
       },
       ...sameDayHistory.map((day) => ({
         year: day.year,
@@ -167,9 +175,9 @@ export async function GET(request) {
       .map((row) => row.humidity)
       .filter((value) => value !== null && value !== undefined);
 
-    const highRank = rank(sameDayHighs, today.tempmax, true);
-    const lowRank = rank(sameDayLows, today.tempmin, false);
-    const humidityRank = rank(sameDayHumidities, today.humidity, true);
+    const highRank = rank(sameDayHighs, selectedDay.tempmax, true);
+    const lowRank = rank(sameDayLows, selectedDay.tempmin, false);
+    const humidityRank = rank(sameDayHumidities, selectedDay.humidity, true);
 
     const sameDayFiveYear = {
       avgHigh: mean(sameDayHighs),
@@ -193,15 +201,21 @@ export async function GET(request) {
       location: primaryRange.resolvedAddress || location,
       fetchedAt: new Date().toISOString(),
       storage: primaryRange.storage,
-      today,
+      analysisDate: analysisDateISO,
+      dateRange: {
+        start: lookbackStartISO,
+        end: analysisDateISO,
+      },
+      selectedDay,
+      dailyHistory: lookbackSeries,
       current: {
-        feelslike: today.feelslike,
-        humidity: today.humidity,
-        windspeed: today.windspeed,
-        winddir: today.winddir,
-        sunrise: today.sunrise,
-        sunset: today.sunset,
-        uvindex: today.uvindex,
+        feelslike: selectedDay.feelslike,
+        humidity: selectedDay.humidity,
+        windspeed: selectedDay.windspeed,
+        winddir: selectedDay.winddir,
+        sunrise: selectedDay.sunrise,
+        sunset: selectedDay.sunset,
+        uvindex: selectedDay.uvindex,
       },
       forecast,
       lookback,

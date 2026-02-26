@@ -15,14 +15,16 @@ const PRIORITY_MARKET_KEYWORDS = [
   "lindenwold",
 ];
 
-function mean(values) {
-  if (!values.length) return null;
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
+const ROLLING_DAYS = 7;
 
 function toNumber(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
+}
+
+function mean(values) {
+  if (!values.length) return null;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
 function marketText(market) {
@@ -31,7 +33,7 @@ function marketText(market) {
 
 function isPriorityMarket(market) {
   const haystack = marketText(market);
-  return PRIORITY_MARKET_KEYWORDS.some((needle) => haystack.includes(needle));
+  return PRIORITY_MARKET_KEYWORDS.some((keyword) => haystack.includes(keyword));
 }
 
 function pickPriorityMarkets(markets) {
@@ -58,124 +60,135 @@ async function mapWithConcurrency(items, concurrency, mapper) {
   return results;
 }
 
-function classifyHeadwind(today, lookback, forecast) {
-  let score = 0;
-
-  if ((today?.snow ?? 0) > 0) score += 2;
-  if ((today?.snowdepth ?? 0) >= 0.5) score += 3;
-  if ((lookback?.snowDays ?? 0) >= 3) score += 2;
-  if ((lookback?.maxSnowDepth ?? 0) >= 0.75) score += 2;
-  if ((today?.tempmax ?? 99) < 42) score += 1;
-  if ((lookback?.precipRate ?? 0) > 0.45) score += 1;
-
-  const freezingForecastNights = (forecast || []).filter(
-    (day) => (day?.tempmin ?? 99) <= 30,
-  ).length;
-  if (freezingForecastNights >= 2) score += 1;
-
-  let level = "low";
-  let signal = "Conditions are generally favorable for normal direct-mail cadence.";
-  if (score >= 6) {
-    level = "high";
-    signal =
-      "Hold or trim heavy direct-mail drops. Snow and cold headwinds can reduce near-term response intent.";
-  } else if (score >= 3) {
-    level = "medium";
-    signal =
-      "Use caution. Keep direct-mail active but prioritize higher-intent segments and stagger volume.";
-  }
-
-  return {
-    headwindLevel: level,
-    headwindScore: score,
-    directMailSignal: signal,
-  };
+function parseAnalysisDate(value) {
+  if (!value) return null;
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return null;
+  return date;
 }
 
-function buildMarketSummary(market, resolvedAddress, days, todayISO, requestedLookbackDays) {
-  const today =
-    days.find((day) => day.datetime === todayISO) || days[days.length - 1] || null;
-  if (!today) {
-    return null;
-  }
+function summarizeWindow(days) {
+  const maxTemps = days
+    .map((day) => toNumber(day.tempmax))
+    .filter((value) => value !== null);
+  const minTemps = days
+    .map((day) => toNumber(day.tempmin))
+    .filter((value) => value !== null);
+  const uvs = days.map((day) => toNumber(day.uvindex)).filter((value) => value !== null);
+  const snowDepths = days
+    .map((day) => toNumber(day.snowdepth) ?? 0)
+    .filter((value) => value !== null);
+  const precips = days
+    .map((day) => toNumber(day.precip) ?? 0)
+    .filter((value) => value !== null);
+  const humidities = days
+    .map((day) => toNumber(day.humidity))
+    .filter((value) => value !== null);
+  const snowfall = days
+    .map((day) => toNumber(day.snow) ?? 0)
+    .filter((value) => value !== null);
 
-  const lookbackDays = days.filter((day) => day.datetime <= todayISO);
-  const forecast = days.filter((day) => day.datetime > todayISO).slice(0, 3);
-
-  const highs = lookbackDays
-    .map((day) => day.tempmax)
-    .filter((value) => value !== null && value !== undefined);
-  const lows = lookbackDays
-    .map((day) => day.tempmin)
-    .filter((value) => value !== null && value !== undefined);
-  const snowValues = lookbackDays.map((day) => day.snow ?? 0);
-  const snowDepthValues = lookbackDays.map((day) => day.snowdepth ?? 0);
-  const precipDays = lookbackDays.filter((day) => (day.precip ?? 0) > 0).length;
-
-  const lookback = {
-    requestedDays: requestedLookbackDays,
-    returnedDays: lookbackDays.length,
-    avgHigh: mean(highs),
-    avgLow: mean(lows),
-    snowDays: lookbackDays.filter(
-      (day) => (day.snow ?? 0) > 0 || (day.snowdepth ?? 0) > 0,
+  return {
+    avgMaxTemp: mean(maxTemps),
+    avgMinTemp: mean(minTemps),
+    avgUv: mean(uvs),
+    avgSnowDepth: mean(snowDepths),
+    avgPrecip: mean(precips),
+    avgHumidity: mean(humidities),
+    avgSnowfall: mean(snowfall),
+    snowDays: days.filter(
+      (day) => (toNumber(day.snow) ?? 0) > 0 || (toNumber(day.snowdepth) ?? 0) > 0,
     ).length,
-    totalSnow: snowValues.reduce((sum, value) => sum + value, 0),
-    maxSnowDepth: snowDepthValues.length ? Math.max(...snowDepthValues) : 0,
-    precipDays,
-    precipRate: lookbackDays.length ? precipDays / lookbackDays.length : 0,
-  };
-
-  const headwind = classifyHeadwind(today, lookback, forecast);
-
-  return {
-    ...market,
-    location: resolvedAddress || market.name,
-    today: {
-      datetime: today.datetime,
-      temp: toNumber(today.temp),
-      tempmax: toNumber(today.tempmax),
-      tempmin: toNumber(today.tempmin),
-      humidity: toNumber(today.humidity),
-      precip: toNumber(today.precip) ?? 0,
-      precipprob: toNumber(today.precipprob),
-      snow: toNumber(today.snow) ?? 0,
-      snowdepth: toNumber(today.snowdepth) ?? 0,
-      conditions: today.conditions || null,
-    },
-    lookback,
-    forecast: forecast.map((day) => ({
-      datetime: day.datetime,
-      temp: toNumber(day.temp),
-      tempmax: toNumber(day.tempmax),
-      tempmin: toNumber(day.tempmin),
-      humidity: toNumber(day.humidity),
-      precip: toNumber(day.precip) ?? 0,
-      precipprob: toNumber(day.precipprob),
-      snow: toNumber(day.snow) ?? 0,
-      snowdepth: toNumber(day.snowdepth) ?? 0,
-      conditions: day.conditions || null,
-    })),
-    ...headwind,
   };
 }
 
-function buildOverview(markets) {
+function metricComparison(current, previous) {
+  const safeCurrent = current ?? null;
+  const safePrevious = previous ?? null;
+  const delta =
+    safeCurrent !== null && safePrevious !== null
+      ? safeCurrent - safePrevious
+      : null;
+  const deltaPct =
+    delta !== null && safePrevious !== 0 ? (delta / Math.abs(safePrevious)) * 100 : null;
+
   return {
-    totalMarkets: markets.length,
-    highHeadwinds: markets.filter((market) => market.headwindLevel === "high").length,
-    mediumHeadwinds: markets.filter((market) => market.headwindLevel === "medium").length,
-    lowHeadwinds: markets.filter((market) => market.headwindLevel === "low").length,
-    avgTodayTemp: mean(
-      markets
-        .map((market) => market.today?.temp)
+    current: safeCurrent,
+    previous: safePrevious,
+    delta,
+    deltaPct,
+  };
+}
+
+function compareMetrics(current, previous) {
+  return {
+    avgMaxTemp: metricComparison(current.avgMaxTemp, previous.avgMaxTemp),
+    avgMinTemp: metricComparison(current.avgMinTemp, previous.avgMinTemp),
+    avgUv: metricComparison(current.avgUv, previous.avgUv),
+    avgSnowDepth: metricComparison(current.avgSnowDepth, previous.avgSnowDepth),
+    avgPrecip: metricComparison(current.avgPrecip, previous.avgPrecip),
+    avgHumidity: metricComparison(current.avgHumidity, previous.avgHumidity),
+    avgSnowfall: metricComparison(current.avgSnowfall, previous.avgSnowfall),
+    snowDays: metricComparison(current.snowDays, previous.snowDays),
+  };
+}
+
+function buildSignal(summary, day) {
+  let score = 0;
+  if ((day?.snowdepth ?? 0) >= 0.5) score += 3;
+  if ((day?.snow ?? 0) > 0) score += 2;
+  if ((summary?.avgMaxTemp ?? 99) < 42) score += 1;
+  if ((summary?.snowDays ?? 0) >= 3) score += 2;
+  if ((summary?.avgPrecip ?? 0) > 0.2) score += 1;
+
+  if (score >= 6) {
+    return "Weather headwinds are elevated. Consider lighter direct-mail cadence.";
+  }
+
+  if (score >= 3) {
+    return "Moderate headwinds. Prioritize high-intent segments and monitor response.";
+  }
+
+  return "Weather setup is relatively favorable for normal cadence.";
+}
+
+function aggregateOverview(marketRows, analysisDateISO, windowStartISO, prevWindowStartISO, prevAnalysisDateISO) {
+  const metricKeys = [
+    "avgMaxTemp",
+    "avgMinTemp",
+    "avgUv",
+    "avgSnowDepth",
+    "avgPrecip",
+    "avgHumidity",
+    "avgSnowfall",
+    "snowDays",
+  ];
+
+  const averagesCurrent = {};
+  const averagesPrevious = {};
+  for (const key of metricKeys) {
+    averagesCurrent[key] = mean(
+      marketRows
+        .map((row) => row.metrics[key])
         .filter((value) => value !== null && value !== undefined),
-    ),
-    avgSnowDepth: mean(
-      markets
-        .map((market) => market.today?.snowdepth ?? 0)
+    );
+    averagesPrevious[key] = mean(
+      marketRows
+        .map((row) => row.previousMetrics[key])
         .filter((value) => value !== null && value !== undefined),
-    ),
+    );
+  }
+
+  return {
+    window: {
+      analysisDate: analysisDateISO,
+      startDate: windowStartISO,
+      days: ROLLING_DAYS,
+      previousAnalysisDate: prevAnalysisDateISO,
+      previousStartDate: prevWindowStartISO,
+    },
+    yoyCards: compareMetrics(averagesCurrent, averagesPrevious),
+    marketCount: marketRows.length,
   };
 }
 
@@ -194,15 +207,17 @@ export async function GET(request) {
 
     const { searchParams } = new URL(request.url);
     const mode = (searchParams.get("mode") || "priority").toLowerCase();
-    const requestedLookbackRaw = Number.parseInt(
-      searchParams.get("lookbackDays") || "21",
-      10,
-    );
-    const requestedLookbackDays = Number.isFinite(requestedLookbackRaw)
-      ? Math.min(120, Math.max(7, requestedLookbackRaw))
-      : 21;
+    const requestedDate = parseAnalysisDate(searchParams.get("analysisDate"));
+    const today = new Date();
+    const analysisDate = requestedDate && requestedDate <= today ? requestedDate : today;
 
-    const effectiveLookbackDays = mode === "all" ? 7 : requestedLookbackDays;
+    const analysisDateISO = formatISODate(analysisDate);
+    const windowStartISO = formatISODate(shiftDays(analysisDate, -(ROLLING_DAYS - 1)));
+
+    const previousDate = new Date(analysisDate);
+    previousDate.setUTCFullYear(previousDate.getUTCFullYear() - 1);
+    const prevAnalysisDateISO = formatISODate(previousDate);
+    const prevWindowStartISO = formatISODate(shiftDays(previousDate, -(ROLLING_DAYS - 1)));
 
     const marketsConfig = await loadMarketsConfig();
     const allMarkets = Array.isArray(marketsConfig.markets) ? marketsConfig.markets : [];
@@ -214,61 +229,74 @@ export async function GET(request) {
     }
 
     const priorityMarkets = pickPriorityMarkets(allMarkets);
-    const selectedMarkets =
-      mode === "all"
-        ? allMarkets
-        : priorityMarkets;
-
-    const now = new Date();
-    const todayISO = formatISODate(now);
-    const startDate = formatISODate(shiftDays(now, -(effectiveLookbackDays - 1)));
-    const endDate = formatISODate(shiftDays(now, 3));
-
+    const selectedMarkets = mode === "all" ? allMarkets : priorityMarkets;
     const concurrency = mode === "all" ? 1 : 2;
 
-    const taskResults = await mapWithConcurrency(
-      selectedMarkets,
-      concurrency,
-      async (market) => {
-        try {
-          const result = await getOrFetchWeatherRange({
-            marketName: market.name,
-            startDate,
-            endDate,
-            apiKey,
-          });
+    const rows = await mapWithConcurrency(selectedMarkets, concurrency, async (market) => {
+      try {
+        const current = await getOrFetchWeatherRange({
+          marketName: market.name,
+          startDate: windowStartISO,
+          endDate: analysisDateISO,
+          apiKey,
+        });
+        const previous = await getOrFetchWeatherRange({
+          marketName: market.name,
+          startDate: prevWindowStartISO,
+          endDate: prevAnalysisDateISO,
+          apiKey,
+        });
 
-          const summary = buildMarketSummary(
-            market,
-            result.resolvedAddress,
-            result.days,
-            todayISO,
-            effectiveLookbackDays,
-          );
+        const day =
+          current.days.find((entry) => entry.datetime === analysisDateISO) ||
+          current.days[current.days.length - 1] ||
+          null;
+        const metrics = summarizeWindow(current.days || []);
+        const previousMetrics = summarizeWindow(previous.days || []);
+        const yoy = compareMetrics(metrics, previousMetrics);
 
-          return {
-            ok: true,
-            market: summary,
-            storage: result.storage,
-          };
-        } catch (error) {
-          return {
-            ok: false,
-            error: error.message || "Unknown weather fetch failure.",
-            marketName: market.name,
-          };
-        }
-      },
-    );
+        return {
+          ok: true,
+          storage: current.storage,
+          market: {
+            ...market,
+            location: current.resolvedAddress || market.name,
+            day: day
+              ? {
+                  datetime: day.datetime,
+                  temp: toNumber(day.temp),
+                  tempmax: toNumber(day.tempmax),
+                  tempmin: toNumber(day.tempmin),
+                  humidity: toNumber(day.humidity),
+                  precip: toNumber(day.precip) ?? 0,
+                  precipprob: toNumber(day.precipprob),
+                  snow: toNumber(day.snow) ?? 0,
+                  snowdepth: toNumber(day.snowdepth) ?? 0,
+                  conditions: day.conditions || null,
+                  uvindex: toNumber(day.uvindex),
+                }
+              : null,
+            metrics,
+            previousMetrics,
+            yoy,
+            directMailSignal: buildSignal(metrics, day),
+          },
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          marketName: market.name,
+          error: error.message || "Unknown weather fetch failure.",
+        };
+      }
+    });
 
-    const markets = taskResults
-      .filter((entry) => entry.ok && entry.market)
-      .map((entry) => entry.market);
-    const errors = taskResults
-      .filter((entry) => !entry.ok)
-      .map((entry) => ({
-        market: entry.marketName,
-        error: entry.error,
+    const markets = rows.filter((row) => row.ok).map((row) => row.market);
+    const errors = rows
+      .filter((row) => !row.ok)
+      .map((row) => ({
+        market: row.marketName,
+        error: row.error,
       }));
 
     if (!markets.length) {
@@ -282,21 +310,26 @@ export async function GET(request) {
       );
     }
 
-    const storageModes = [...new Set(taskResults.filter((entry) => entry.ok).map((entry) => entry.storage))];
+    const storageModes = [...new Set(rows.filter((row) => row.ok).map((row) => row.storage))];
 
     return NextResponse.json({
       source: marketsConfig.source,
       updatedAt: marketsConfig.updatedAt || null,
       fetchedAt: new Date().toISOString(),
       mode,
-      requestedLookbackDays,
-      lookbackDays: effectiveLookbackDays,
+      rollingDays: ROLLING_DAYS,
+      analysisDate: analysisDateISO,
       priorityMarketNames: priorityMarkets.map((market) => market.name),
       selectedMarketCount: selectedMarkets.length,
       totalConfiguredMarkets: allMarkets.length,
-      remainingMarkets: Math.max(allMarkets.length - selectedMarkets.length, 0),
       storageModes,
-      overview: buildOverview(markets),
+      overview: aggregateOverview(
+        markets,
+        analysisDateISO,
+        windowStartISO,
+        prevWindowStartISO,
+        prevAnalysisDateISO,
+      ),
       markets,
       errors,
     });

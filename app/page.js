@@ -2,53 +2,36 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-const FALLBACK_LOCATIONS = [
+const FALLBACK_MARKETS = [
   "West Chester,PA",
-  "Philadelphia,PA",
-  "Lancaster,PA",
-  "Allentown,PA",
-  "Trenton,NJ",
+  "North Wales,PA",
+  "Hillsborough Township,NJ",
+  "Lindenwold,NJ",
 ];
 
-const LOOKBACK_OPTIONS = [7, 14, 21, 30, 45, 60, 90];
-
-const MARKET_SORT_OPTIONS = [
-  { value: "headwind", label: "Headwind Severity" },
-  { value: "snowdepth", label: "Snow Depth (Today)" },
-  { value: "snowdays", label: "Snow Days (Lookback)" },
-  { value: "temperature", label: "Current Temperature" },
-  { value: "name", label: "Market Name" },
+const FOURTH_METRIC_OPTIONS = [
+  { key: "avgSnowDepth", label: "Avg Snow Depth", unit: "in", digits: 2 },
+  { key: "avgPrecip", label: "Avg Precipitation", unit: "in", digits: 2 },
+  { key: "avgHumidity", label: "Avg Humidity", unit: "%", digits: 0 },
+  { key: "avgSnowfall", label: "Avg Snowfall", unit: "in", digits: 2 },
+  { key: "snowDays", label: "Snow Days", unit: "days", digits: 1 },
 ];
 
 function formatNumber(value, digits = 0) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) {
-    return "--";
-  }
-
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "--";
   return Number(value).toFixed(digits);
 }
 
 function formatTemp(value, digits = 0) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) {
-    return "--";
-  }
-
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "--";
   return `${Number(value).toFixed(digits)}°F`;
-}
-
-function formatPercent(value, digits = 0) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) {
-    return "--";
-  }
-
-  return `${Number(value).toFixed(digits)}%`;
 }
 
 function formatDateLabel(value) {
   if (!value) return "--";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "--";
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return "--";
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 function marketLabel(market) {
@@ -56,78 +39,56 @@ function marketLabel(market) {
   return market.label || market.name || market.id || "";
 }
 
-function headwindWeight(level) {
-  if (level === "high") return 3;
-  if (level === "medium") return 2;
-  return 1;
+function formatYoY(metric, digits = 1, suffix = "") {
+  if (!metric) {
+    return {
+      current: "--",
+      delta: "YoY: --",
+    };
+  }
+
+  const current =
+    metric.current === null || metric.current === undefined
+      ? "--"
+      : `${Number(metric.current).toFixed(digits)}${suffix}`;
+
+  const deltaValue =
+    metric.delta === null || metric.delta === undefined
+      ? "--"
+      : `${metric.delta >= 0 ? "+" : ""}${Number(metric.delta).toFixed(digits)}${suffix}`;
+
+  return {
+    current,
+    delta: `YoY: ${deltaValue}`,
+  };
 }
 
-function headwindBadgeClass(level) {
-  if (level === "high") return "badge badge-high";
-  if (level === "medium") return "badge badge-medium";
-  return "badge badge-low";
-}
-
-function sortMarkets(markets, mode) {
-  const rows = [...markets];
-
-  rows.sort((a, b) => {
-    if (mode === "name") {
-      return marketLabel(a).localeCompare(marketLabel(b));
-    }
-
-    if (mode === "snowdepth") {
-      return (b.today?.snowdepth ?? 0) - (a.today?.snowdepth ?? 0);
-    }
-
-    if (mode === "snowdays") {
-      return (b.lookback?.snowDays ?? 0) - (a.lookback?.snowDays ?? 0);
-    }
-
-    if (mode === "temperature") {
-      return (b.today?.temp ?? -999) - (a.today?.temp ?? -999);
-    }
-
-    const severityDelta = headwindWeight(b.headwindLevel) - headwindWeight(a.headwindLevel);
-    if (severityDelta !== 0) return severityDelta;
-
-    return (b.headwindScore ?? 0) - (a.headwindScore ?? 0);
-  });
-
-  return rows;
+function toDailyBarWidth(value, maxValue) {
+  if (!maxValue) return 0;
+  return Math.max(4, Math.round((value / maxValue) * 100));
 }
 
 export default function HomePage() {
   const [markets, setMarkets] = useState([]);
-  const [marketsSource, setMarketsSource] = useState("");
-  const [marketsUpdatedAt, setMarketsUpdatedAt] = useState("");
-  const [marketsLoading, setMarketsLoading] = useState(true);
-  const [marketsError, setMarketsError] = useState("");
-
-  const [selectedLocation, setSelectedLocation] = useState(FALLBACK_LOCATIONS[0]);
-  const [customLocation, setCustomLocation] = useState("");
-  const [lookbackDays, setLookbackDays] = useState(21);
-  const [marketSortMode, setMarketSortMode] = useState("headwind");
+  const [selectedMarket, setSelectedMarket] = useState(FALLBACK_MARKETS[0]);
   const [showAllLocations, setShowAllLocations] = useState(false);
+  const [analysisDate, setAnalysisDate] = useState("");
+  const [selectedYear, setSelectedYear] = useState(null);
+  const [fourthMetricKey, setFourthMetricKey] = useState("avgSnowDepth");
 
-  const [weather, setWeather] = useState(null);
   const [marketWeather, setMarketWeather] = useState(null);
-  const [uploadedAnalysis, setUploadedAnalysis] = useState(null);
+  const [selectedWeather, setSelectedWeather] = useState(null);
+  const [leadsOverview, setLeadsOverview] = useState(null);
 
-  const [loadingWeather, setLoadingWeather] = useState(true);
+  const [loadingMarkets, setLoadingMarkets] = useState(true);
   const [loadingMarketWeather, setLoadingMarketWeather] = useState(true);
+  const [loadingSelectedWeather, setLoadingSelectedWeather] = useState(true);
+  const [loadingLeads, setLoadingLeads] = useState(true);
 
+  const [marketsError, setMarketsError] = useState("");
   const [weatherError, setWeatherError] = useState("");
-  const [marketWeatherError, setMarketWeatherError] = useState("");
-  const [uploadError, setUploadError] = useState("");
-
-  const [uploadFile, setUploadFile] = useState(null);
-  const [uploading, setUploading] = useState(false);
-  const [dateColumnInput, setDateColumnInput] = useState("EstimateRequestedDate");
-  const [channelColumnInput, setChannelColumnInput] = useState(
-    "ProgramSourceDescription",
-  );
-  const [marketColumnInput, setMarketColumnInput] = useState("");
+  const [selectedWeatherError, setSelectedWeatherError] = useState("");
+  const [leadsError, setLeadsError] = useState("");
 
   const [question, setQuestion] = useState("");
   const [chatAnswer, setChatAnswer] = useState("");
@@ -136,85 +97,146 @@ export default function HomePage() {
 
   const locationOptions = useMemo(() => {
     if (!markets.length) {
-      return FALLBACK_LOCATIONS.map((name) => ({ value: name, label: name }));
+      return FALLBACK_MARKETS.map((name) => ({ value: name, label: name }));
     }
-
     return markets
-      .map((market) => ({
-        value: market.name,
-        label: marketLabel(market),
-      }))
-      .filter((entry) => entry.value);
+      .map((market) => ({ value: market.name, label: marketLabel(market) }))
+      .filter((item) => item.value);
   }, [markets]);
 
-  const location = useMemo(() => {
-    if (selectedLocation === "__custom") {
-      const trimmed = customLocation.trim();
-      return trimmed || locationOptions[0]?.value || FALLBACK_LOCATIONS[0];
+  useEffect(() => {
+    if (!locationOptions.length) return;
+    if (!locationOptions.some((option) => option.value === selectedMarket)) {
+      setSelectedMarket(locationOptions[0].value);
     }
+  }, [locationOptions, selectedMarket]);
 
-    return selectedLocation;
-  }, [selectedLocation, customLocation, locationOptions]);
+  const availableYears = leadsOverview?.availableYears || [];
 
-  const sortedMarketWeather = useMemo(() => {
-    return sortMarkets(marketWeather?.markets || [], marketSortMode);
-  }, [marketWeather, marketSortMode]);
+  const seasonWindow = leadsOverview?.seasonWindow || null;
+  const dateMin = seasonWindow?.start || "";
+  const dateMax = seasonWindow?.end || "";
+
+  const fourthMetric = useMemo(
+    () =>
+      FOURTH_METRIC_OPTIONS.find((option) => option.key === fourthMetricKey) ||
+      FOURTH_METRIC_OPTIONS[0],
+    [fourthMetricKey],
+  );
 
   useEffect(() => {
     let active = true;
-
     async function loadMarkets() {
-      setMarketsLoading(true);
+      setLoadingMarkets(true);
       setMarketsError("");
-
       try {
         const response = await fetch("/api/markets", { cache: "no-store" });
         const payload = await response.json();
         if (!response.ok) {
-          throw new Error(payload.error || "Unable to load markets.");
+          throw new Error(payload.error || "Unable to load market list.");
         }
-
-        if (active) {
-          setMarkets(Array.isArray(payload.markets) ? payload.markets : []);
-          setMarketsSource(payload.source || "");
-          setMarketsUpdatedAt(payload.updatedAt || "");
+        if (!active) return;
+        const rows = Array.isArray(payload.markets) ? payload.markets : [];
+        setMarkets(rows);
+        if (rows.length && !rows.some((row) => row.name === selectedMarket)) {
+          setSelectedMarket(rows[0].name);
         }
       } catch (error) {
-        if (active) {
-          setMarkets([]);
-          setMarketsError(error.message);
-        }
+        if (active) setMarketsError(error.message);
       } finally {
-        if (active) {
-          setMarketsLoading(false);
-        }
+        if (active) setLoadingMarkets(false);
       }
     }
-
     loadMarkets();
     return () => {
       active = false;
     };
-  }, []);
-
-  useEffect(() => {
-    const valid = new Set(locationOptions.map((entry) => entry.value));
-    if (selectedLocation !== "__custom" && !valid.has(selectedLocation)) {
-      setSelectedLocation(locationOptions[0]?.value || FALLBACK_LOCATIONS[0]);
-    }
-  }, [locationOptions, selectedLocation]);
+  }, [selectedMarket]);
 
   useEffect(() => {
     let active = true;
-
-    async function loadSelectedWeather() {
-      setLoadingWeather(true);
-      setWeatherError("");
-
+    async function loadLeads() {
+      setLoadingLeads(true);
+      setLeadsError("");
       try {
         const params = new URLSearchParams({
-          location,
-          lookbackDays: String(lookbackDays),
+          benchmarkMarket: selectedMarket,
+        });
+        if (selectedYear) {
+          params.set("year", String(selectedYear));
+        }
+        const response = await fetch(`/api/leads/overview?${params.toString()}`, {
+          cache: "no-store",
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error || "Unable to load leads overview.");
+        }
+        if (!active) return;
+        setLeadsOverview(payload);
+        if (!selectedYear && payload.selectedYear) {
+          setSelectedYear(payload.selectedYear);
+        }
+        const seasonEnd = payload?.seasonWindow?.end;
+        if (seasonEnd && (!analysisDate || analysisDate > seasonEnd || analysisDate < payload.seasonWindow.start)) {
+          setAnalysisDate(seasonEnd);
+        }
+      } catch (error) {
+        if (active) setLeadsError(error.message);
+      } finally {
+        if (active) setLoadingLeads(false);
+      }
+    }
+    loadLeads();
+    return () => {
+      active = false;
+    };
+  }, [selectedMarket, selectedYear]);
+
+  useEffect(() => {
+    if (!analysisDate) return;
+    let active = true;
+
+    async function loadRadarWeather() {
+      setLoadingMarketWeather(true);
+      setWeatherError("");
+      try {
+        const params = new URLSearchParams({
+          mode: showAllLocations ? "all" : "priority",
+          analysisDate,
+        });
+        const response = await fetch(`/api/weather/markets?${params.toString()}`, {
+          cache: "no-store",
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error || "Unable to load weather analysis.");
+        }
+        if (active) setMarketWeather(payload);
+      } catch (error) {
+        if (active) setWeatherError(error.message);
+      } finally {
+        if (active) setLoadingMarketWeather(false);
+      }
+    }
+
+    loadRadarWeather();
+    return () => {
+      active = false;
+    };
+  }, [analysisDate, showAllLocations]);
+
+  useEffect(() => {
+    if (!analysisDate) return;
+    let active = true;
+    async function loadSelectedWeather() {
+      setLoadingSelectedWeather(true);
+      setSelectedWeatherError("");
+      try {
+        const params = new URLSearchParams({
+          location: selectedMarket,
+          analysisDate,
+          lookbackDays: "30",
         });
         const response = await fetch(`/api/weather?${params.toString()}`, {
           cache: "no-store",
@@ -223,106 +245,18 @@ export default function HomePage() {
         if (!response.ok) {
           throw new Error(payload.error || "Unable to load selected market weather.");
         }
-
-        if (active) {
-          setWeather(payload);
-        }
+        if (active) setSelectedWeather(payload);
       } catch (error) {
-        if (active) {
-          setWeather(null);
-          setWeatherError(error.message);
-        }
+        if (active) setSelectedWeatherError(error.message);
       } finally {
-        if (active) {
-          setLoadingWeather(false);
-        }
+        if (active) setLoadingSelectedWeather(false);
       }
     }
-
     loadSelectedWeather();
     return () => {
       active = false;
     };
-  }, [location, lookbackDays]);
-
-  useEffect(() => {
-    let active = true;
-
-    async function loadAllMarketWeather() {
-      setLoadingMarketWeather(true);
-      setMarketWeatherError("");
-
-      try {
-        const mode = showAllLocations ? "all" : "priority";
-        const effectiveLookbackDays = showAllLocations ? 7 : lookbackDays;
-        const params = new URLSearchParams({
-          mode,
-          lookbackDays: String(effectiveLookbackDays),
-        });
-        const response = await fetch(`/api/weather/markets?${params.toString()}`, {
-          cache: "no-store",
-        });
-        const payload = await response.json();
-        if (!response.ok) {
-          throw new Error(payload.error || "Unable to load market weather radar.");
-        }
-
-        if (active) {
-          setMarketWeather(payload);
-        }
-      } catch (error) {
-        if (active) {
-          setMarketWeather(null);
-          setMarketWeatherError(error.message);
-        }
-      } finally {
-        if (active) {
-          setLoadingMarketWeather(false);
-        }
-      }
-    }
-
-    loadAllMarketWeather();
-    return () => {
-      active = false;
-    };
-  }, [lookbackDays, showAllLocations]);
-
-  async function handleUpload(event) {
-    event.preventDefault();
-    if (!uploadFile) {
-      setUploadError("Choose a file before running analysis.");
-      return;
-    }
-
-    setUploading(true);
-    setUploadError("");
-
-    try {
-      const formData = new FormData();
-      formData.append("file", uploadFile);
-      formData.append("fallbackMarket", location);
-      formData.append("dateColumn", dateColumnInput.trim());
-      formData.append("channelColumn", channelColumnInput.trim());
-      formData.append("marketColumn", marketColumnInput.trim());
-
-      const response = await fetch("/api/analysis/upload", {
-        method: "POST",
-        body: formData,
-      });
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload.error || "Upload analysis failed.");
-      }
-
-      setUploadedAnalysis(payload);
-    } catch (error) {
-      setUploadedAnalysis(null);
-      setUploadError(error.message);
-    } finally {
-      setUploading(false);
-    }
-  }
+  }, [selectedMarket, analysisDate]);
 
   async function askCopilot(event) {
     event.preventDefault();
@@ -331,30 +265,25 @@ export default function HomePage() {
 
     setChatLoading(true);
     setChatError("");
-
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           question: trimmed,
           weatherContext: {
-            selectedMarket: weather,
-            marketRadar: marketWeather,
+            radar: marketWeather,
+            selectedMarket: selectedWeather,
           },
           analysisContext: {
-            uploaded: uploadedAnalysis,
+            leads: leadsOverview,
           },
         }),
       });
-
       const payload = await response.json();
       if (!response.ok) {
         throw new Error(payload.error || "Chat request failed.");
       }
-
       setChatAnswer(payload.answer || "");
     } catch (error) {
       setChatError(error.message);
@@ -363,323 +292,282 @@ export default function HomePage() {
     }
   }
 
-  const overview = marketWeather?.overview || null;
+  const yoyCards = marketWeather?.overview?.yoyCards || {};
+  const metricCard4 = yoyCards[fourthMetric.key] || null;
+  const maxDailyLead = Math.max(...(leadsOverview?.daily || []).map((row) => row.totalLeads), 0);
 
   return (
-    <main className="container">
-      <section className="hero-panel">
+    <main className="analysis-page">
+      <header className="analysis-header">
         <div>
-          <h1>Weather + Lead Timing Command Center</h1>
+          <h1>Weather Analysis</h1>
           <p>
-            Multi-market weather radar for direct-mail timing, lead headwinds, and
-            operational planning.
-          </p>
-          <p className="subtle">
-            Markets source:{" "}
-            <strong>
-              {marketsSource || (marketsLoading ? "Loading..." : "Fallback list")}
-            </strong>
-            {marketsUpdatedAt ? ` | Updated: ${marketsUpdatedAt}` : ""}
+            Leadership view of weather patterns and lead response from Feb 15 to May 17 each year.
           </p>
         </div>
-        <div className="hero-stats">
-          <div className="stat-chip">
-            <span>Markets</span>
-            <strong>{formatNumber(overview?.totalMarkets || locationOptions.length)}</strong>
-          </div>
-          <div className="stat-chip">
-            <span>High Headwind</span>
-            <strong>{formatNumber(overview?.highHeadwinds || 0)}</strong>
-          </div>
-          <div className="stat-chip">
-            <span>Avg Temp</span>
-            <strong>{formatTemp(overview?.avgTodayTemp, 0)}</strong>
-          </div>
-          <div className="stat-chip">
-            <span>Avg Snow Depth</span>
-            <strong>{formatNumber(overview?.avgSnowDepth, 2)} in</strong>
-          </div>
-        </div>
-      </section>
+      </header>
 
-      <section className="panel controls modern-controls">
-        <div className="control-group">
-          <label htmlFor="location">Selected Market Deep Dive</label>
-          <select
-            id="location"
-            value={selectedLocation}
-            onChange={(event) => setSelectedLocation(event.target.value)}
-          >
-            {locationOptions.map((entry) => (
-              <option key={entry.value} value={entry.value}>
-                {entry.label}
-              </option>
-            ))}
-            <option value="__custom">Custom...</option>
-          </select>
-          {selectedLocation === "__custom" && (
-            <input
-              value={customLocation}
-              onChange={(event) => setCustomLocation(event.target.value)}
-              placeholder="Example: Wilmington,DE"
-            />
-          )}
-        </div>
-
-        <div className="control-group">
-          <label htmlFor="lookback">Lookback Window</label>
-          <select
-            id="lookback"
-            value={lookbackDays}
-            onChange={(event) => setLookbackDays(Number(event.target.value))}
-          >
-            {LOOKBACK_OPTIONS.map((days) => (
-              <option value={days} key={days}>
-                Last {days} days
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="control-group">
-          <label htmlFor="sort-mode">Market Sort</label>
-          <select
-            id="sort-mode"
-            value={marketSortMode}
-            onChange={(event) => setMarketSortMode(event.target.value)}
-          >
-            {MARKET_SORT_OPTIONS.map((option) => (
-              <option value={option.value} key={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="control-note">
-          <strong>Security:</strong> all API keys remain server-side in Vercel
-          environment variables.
-        </div>
-      </section>
-
-      {marketsError && <p className="error">{marketsError}</p>}
-      {weatherError && <p className="error">{weatherError}</p>}
-      {marketWeatherError && <p className="error">{marketWeatherError}</p>}
-      {uploadError && <p className="error">{uploadError}</p>}
-
-      <section className="panel">
-        <div className="panel-title-row">
-          <h2>Market Weather Radar</h2>
-          <div className="panel-actions">
-            <span className="subtle">
-              {showAllLocations
-                ? "All locations loaded (7-day lookback)."
-                : "Priority locations loaded first."}
-            </span>
-            {showAllLocations ? (
-              <button
-                type="button"
-                onClick={() => setShowAllLocations(false)}
-                className="secondary-button"
+      <section className="top-grid">
+        <article className="panel">
+          <h2>Filters</h2>
+          <div className="filter-grid">
+            <label>
+              Year
+              <select
+                value={selectedYear || ""}
+                onChange={(event) => setSelectedYear(Number(event.target.value))}
+                disabled={!availableYears.length}
               >
-                Show Priority Only
-              </button>
-            ) : (
-              <button type="button" onClick={() => setShowAllLocations(true)}>
-                Load All Locations (7 Days)
-              </button>
-            )}
-          </div>
-        </div>
-
-        {loadingMarketWeather ? (
-          <p>
-            Loading {showAllLocations ? "all locations" : "priority locations"}...
-          </p>
-        ) : (
-          <>
-            {(marketWeather?.errors || []).length > 0 && (
-              <ul>
-                {marketWeather.errors.map((entry) => (
-                  <li key={`${entry.market}-${entry.error}`}>
-                    {entry.market}: {entry.error}
-                  </li>
+                {(availableYears || []).map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
                 ))}
-              </ul>
-            )}
+              </select>
+            </label>
 
-            <div className="market-grid">
-              {sortedMarketWeather.map((market) => (
-                <article className="market-card" key={market.id || market.name}>
-                  <div className="market-card-top">
-                    <h3>{marketLabel(market)}</h3>
-                    <span className={headwindBadgeClass(market.headwindLevel)}>
-                      {(market.headwindLevel || "low").toUpperCase()}
-                    </span>
-                  </div>
-                  <p className="market-condition">{market.today?.conditions || "--"}</p>
-                  <div className="metric-grid">
-                    <div>
-                      <span>Current</span>
-                      <strong>{formatTemp(market.today?.temp, 0)}</strong>
-                    </div>
-                    <div>
-                      <span>Snow Depth</span>
-                      <strong>{formatNumber(market.today?.snowdepth, 2)} in</strong>
-                    </div>
-                    <div>
-                      <span>Snow Days</span>
-                      <strong>{formatNumber(market.lookback?.snowDays)}</strong>
-                    </div>
-                    <div>
-                      <span>Avg High</span>
-                      <strong>{formatTemp(market.lookback?.avgHigh, 1)}</strong>
-                    </div>
-                  </div>
-                  <p className="signal-line">{market.directMailSignal}</p>
-                </article>
-              ))}
-            </div>
-          </>
-        )}
-      </section>
-
-      <section className="grid two-panel">
-        <article className="panel">
-          <h2>Selected Market: {weather?.location || location}</h2>
-          {loadingWeather ? (
-            <p>Loading selected market weather...</p>
-          ) : (
-            <>
-              <p className="big">{formatTemp(weather?.today?.temp, 0)}</p>
-              <p>{weather?.today?.conditions || "--"}</p>
-              <ul>
-                <li>High: {formatTemp(weather?.today?.tempmax, 0)}</li>
-                <li>Low: {formatTemp(weather?.today?.tempmin, 0)}</li>
-                <li>Humidity: {formatPercent(weather?.today?.humidity, 0)}</li>
-                <li>Precip Prob: {formatPercent(weather?.today?.precipprob, 0)}</li>
-                <li>Snow: {formatNumber(weather?.today?.snow, 2)} in</li>
-                <li>Snow Depth: {formatNumber(weather?.today?.snowdepth, 2)} in</li>
-              </ul>
-            </>
-          )}
-        </article>
-
-        <article className="panel">
-          <h2>3-Day Outlook</h2>
-          {loadingWeather ? (
-            <p>Loading forecast...</p>
-          ) : (
-            <div className="forecast-grid">
-              {(weather?.forecast || []).map((day) => (
-                <div className="forecast-card" key={day.datetime}>
-                  <h3>{formatDateLabel(day.datetime)}</h3>
-                  <p>{day.conditions || "--"}</p>
-                  <p>High: {formatTemp(day.tempmax, 0)}</p>
-                  <p>Low: {formatTemp(day.tempmin, 0)}</p>
-                  <p>Precip: {formatPercent(day.precipprob, 0)}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </article>
-      </section>
-
-      <section className="panel">
-        <h2>Manual Lead Upload (CSV/XLSX)</h2>
-        <p className="subtle">
-          Upload historical lead exports, aggregate by market/day, and join to
-          weather to evaluate direct-mail timing pressure.
-        </p>
-
-        <form className="upload-form" onSubmit={handleUpload}>
-          <div className="upload-grid">
-            <div className="control-group">
-              <label htmlFor="lead-file">Lead file</label>
+            <label>
+              Date
               <input
-                id="lead-file"
-                type="file"
-                accept=".csv,.xlsx,.xlsm"
-                onChange={(event) => setUploadFile(event.target.files?.[0] || null)}
+                type="date"
+                value={analysisDate}
+                min={dateMin || undefined}
+                max={dateMax || undefined}
+                onChange={(event) => setAnalysisDate(event.target.value)}
+                disabled={!analysisDate}
               />
-            </div>
-            <div className="control-group">
-              <label htmlFor="date-column">Date column</label>
-              <input
-                id="date-column"
-                value={dateColumnInput}
-                onChange={(event) => setDateColumnInput(event.target.value)}
-                placeholder="EstimateRequestedDate"
-              />
-            </div>
-            <div className="control-group">
-              <label htmlFor="channel-column">Channel column</label>
-              <input
-                id="channel-column"
-                value={channelColumnInput}
-                onChange={(event) => setChannelColumnInput(event.target.value)}
-                placeholder="ProgramSourceDescription"
-              />
-            </div>
-            <div className="control-group">
-              <label htmlFor="market-column">Market column (optional)</label>
-              <input
-                id="market-column"
-                value={marketColumnInput}
-                onChange={(event) => setMarketColumnInput(event.target.value)}
-                placeholder="market, city, or branch"
-              />
-            </div>
+            </label>
+
+            <label>
+              Selected Market
+              <select
+                value={selectedMarket}
+                onChange={(event) => setSelectedMarket(event.target.value)}
+                disabled={loadingMarkets}
+              >
+                {locationOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
 
-          <div className="upload-actions">
-            <p className="subtle">
-              If market column is missing, fallback market is <strong>{location}</strong>.
-            </p>
-            <button type="submit" disabled={uploading}>
-              {uploading ? "Analyzing..." : "Upload & Analyze"}
+          <div className="filter-actions">
+            <button type="button" onClick={() => setShowAllLocations((prev) => !prev)}>
+              {showAllLocations ? "Show Key Locations" : "View All Locations"}
             </button>
-          </div>
-        </form>
-
-        {uploadedAnalysis && (
-          <div className="analysis-block">
-            <p>
-              File: <strong>{uploadedAnalysis.uploadedFile}</strong> | Parsed rows:{" "}
-              {formatNumber(uploadedAnalysis.rowsParsed)} | Valid rows:{" "}
-              {formatNumber(uploadedAnalysis.validRows)} | Dropped rows:{" "}
-              {formatNumber(uploadedAnalysis.droppedRows)}
-            </p>
-            <p>
-              Date Range: {uploadedAnalysis?.dateRange?.start || "--"} to{" "}
-              {uploadedAnalysis?.dateRange?.end || "--"}
-            </p>
-            <p>
-              Total leads: {formatNumber(uploadedAnalysis?.totals?.totalLeads)} | Direct
-              mail: {formatNumber(uploadedAnalysis?.totals?.directMailLeads)} (
-              {formatPercent(uploadedAnalysis?.totals?.directMailPct, 2)})
+            <p className="subtle">
+              Market radar values are rolling 7-day averages ending on the selected date.
             </p>
           </div>
-        )}
-      </section>
+        </article>
 
-      <section className="grid two-panel">
         <article className="panel">
-          <h2>Ask OpenAI (Strategy Copilot)</h2>
+          <h2>AI Strategy Assistant</h2>
           <form onSubmit={askCopilot} className="chat-form">
             <textarea
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
-              placeholder="Example: Which markets should hold direct-mail drops this week based on current snow depth and recent weather?"
               rows={4}
+              placeholder="Ask: How did snow depth impact direct mail lead response this season?"
             />
             <button type="submit" disabled={chatLoading}>
-              {chatLoading ? "Thinking..." : "Ask"}
+              {chatLoading ? "Thinking..." : "Ask AI"}
             </button>
           </form>
           {chatError && <p className="error">{chatError}</p>}
           {chatAnswer && <p className="chat-answer">{chatAnswer}</p>}
         </article>
+      </section>
+
+      {(marketsError || weatherError || selectedWeatherError || leadsError) && (
+        <section>
+          {marketsError && <p className="error">{marketsError}</p>}
+          {weatherError && <p className="error">{weatherError}</p>}
+          {selectedWeatherError && <p className="error">{selectedWeatherError}</p>}
+          {leadsError && <p className="error">{leadsError}</p>}
+        </section>
+      )}
+
+      <section className="kpi-grid">
+        <article className="kpi-card">
+          <h3>Avg Max Temp (YoY)</h3>
+          <p className="kpi-value">{formatYoY(yoyCards.avgMaxTemp, 1, "°F").current}</p>
+          <p className="kpi-delta">{formatYoY(yoyCards.avgMaxTemp, 1, "°F").delta}</p>
+        </article>
+        <article className="kpi-card">
+          <h3>Avg Min Temp (YoY)</h3>
+          <p className="kpi-value">{formatYoY(yoyCards.avgMinTemp, 1, "°F").current}</p>
+          <p className="kpi-delta">{formatYoY(yoyCards.avgMinTemp, 1, "°F").delta}</p>
+        </article>
+        <article className="kpi-card">
+          <h3>Avg UV (YoY)</h3>
+          <p className="kpi-value">{formatYoY(yoyCards.avgUv, 1, "").current}</p>
+          <p className="kpi-delta">{formatYoY(yoyCards.avgUv, 1, "").delta}</p>
+        </article>
+        <article className="kpi-card">
+          <div className="kpi-header-inline">
+            <h3>{fourthMetric.label} (YoY)</h3>
+            <select
+              value={fourthMetric.key}
+              onChange={(event) => setFourthMetricKey(event.target.value)}
+            >
+              {FOURTH_METRIC_OPTIONS.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <p className="kpi-value">
+            {formatYoY(metricCard4, fourthMetric.digits, ` ${fourthMetric.unit}`).current}
+          </p>
+          <p className="kpi-delta">
+            {formatYoY(metricCard4, fourthMetric.digits, ` ${fourthMetric.unit}`).delta}
+          </p>
+        </article>
+      </section>
+
+      <section className="panel">
+        <h2>Market Weather Radar</h2>
+        {loadingMarketWeather ? (
+          <p>Loading weather radar...</p>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Market</th>
+                  <th>Avg Max Temp (YoY)</th>
+                  <th>Avg Min Temp (YoY)</th>
+                  <th>Avg UV (YoY)</th>
+                  <th>Avg Snow Depth (YoY)</th>
+                  <th>Direct Mail Signal</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(marketWeather?.markets || []).map((market) => (
+                  <tr key={market.id || market.name}>
+                    <td>{marketLabel(market)}</td>
+                    <td>{formatYoY(market.yoy?.avgMaxTemp, 1, "°F").current} / {formatYoY(market.yoy?.avgMaxTemp, 1, "°F").delta.replace("YoY: ", "")}</td>
+                    <td>{formatYoY(market.yoy?.avgMinTemp, 1, "°F").current} / {formatYoY(market.yoy?.avgMinTemp, 1, "°F").delta.replace("YoY: ", "")}</td>
+                    <td>{formatYoY(market.yoy?.avgUv, 1).current} / {formatYoY(market.yoy?.avgUv, 1).delta.replace("YoY: ", "")}</td>
+                    <td>{formatYoY(market.yoy?.avgSnowDepth, 2, " in").current} / {formatYoY(market.yoy?.avgSnowDepth, 2, " in").delta.replace("YoY: ", "")}</td>
+                    <td>{market.directMailSignal}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section className="detail-grid">
+        <article className="panel">
+          <h2>
+            Selected Market Day Snapshot ({formatDateLabel(selectedWeather?.analysisDate || analysisDate)})
+          </h2>
+          {loadingSelectedWeather ? (
+            <p>Loading selected market details...</p>
+          ) : (
+            <ul className="metric-list">
+              <li>
+                <span>Conditions</span>
+                <strong>{selectedWeather?.selectedDay?.conditions || "--"}</strong>
+              </li>
+              <li>
+                <span>Max Temp</span>
+                <strong>{formatTemp(selectedWeather?.selectedDay?.tempmax, 0)}</strong>
+              </li>
+              <li>
+                <span>Min Temp</span>
+                <strong>{formatTemp(selectedWeather?.selectedDay?.tempmin, 0)}</strong>
+              </li>
+              <li>
+                <span>UV</span>
+                <strong>{formatNumber(selectedWeather?.selectedDay?.uvindex, 1)}</strong>
+              </li>
+              <li>
+                <span>Snow Depth</span>
+                <strong>{formatNumber(selectedWeather?.selectedDay?.snowdepth, 2)} in</strong>
+              </li>
+              <li>
+                <span>Precip</span>
+                <strong>{formatNumber(selectedWeather?.selectedDay?.precip, 2)} in</strong>
+              </li>
+            </ul>
+          )}
+        </article>
+
+        <article className="panel">
+          <h2>Leads by Source ({selectedYear || "--"})</h2>
+          {loadingLeads ? (
+            <p>Loading leads...</p>
+          ) : (
+            <ul className="source-bars">
+              {(leadsOverview?.topSources || []).slice(0, 10).map((source) => {
+                const width = toDailyBarWidth(source.count, leadsOverview?.topSources?.[0]?.count || 0);
+                return (
+                  <li key={source.source}>
+                    <div className="source-label">
+                      <span>{source.source}</span>
+                      <strong>{source.count}</strong>
+                    </div>
+                    <div className="source-bar-track">
+                      <div className="source-bar-fill" style={{ width: `${width}%` }} />
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </article>
+      </section>
+
+      <section className="panel">
+        <h2>Leads by Date vs Weather</h2>
+        <p className="subtle">
+          Leads are stored in Neon and joined with benchmark weather ({selectedMarket}) for seasonal analysis.
+        </p>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Total Leads</th>
+                <th>Direct Mail Leads</th>
+                <th>Lead Bar</th>
+                <th>Temp Max</th>
+                <th>UV</th>
+                <th>Snow Depth</th>
+                <th>Source Storage</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(leadsOverview?.daily || []).slice(0, 60).map((row) => (
+                <tr key={row.date}>
+                  <td>{row.date}</td>
+                  <td>{row.totalLeads}</td>
+                  <td>{row.directMailLeads}</td>
+                  <td>
+                    <div className="daily-bar-track">
+                      <div
+                        className="daily-bar-fill"
+                        style={{ width: `${toDailyBarWidth(row.totalLeads, maxDailyLead)}%` }}
+                      />
+                    </div>
+                  </td>
+                  <td>{formatTemp(row.weather?.tempmax, 0)}</td>
+                  <td>{formatNumber(row.weather?.uvindex, 1)}</td>
+                  <td>{formatNumber(row.weather?.snowdepth, 2)} in</td>
+                  <td>{leadsOverview?.storage?.leads || "neon"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
     </main>
   );

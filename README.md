@@ -12,17 +12,19 @@ For production/internal use, secrets should stay server-side.
 - Weather endpoint proxy for Visual Crossing (`/api/weather`)
 - Multi-market weather radar endpoint (`/api/weather/markets`)
 - OpenAI conversational endpoint (`/api/chat`)
+- Leads + weather impact endpoint (`/api/leads/overview`)
 - GitHub-backed market configuration endpoint (`/api/markets`) that prefers:
   1. `GMB Locations.csv` (if present)
   2. `data/markets.json` fallback
 - Manual lead upload + aggregation endpoint (`/api/analysis/upload`)
 - Neon-backed weather cache table (`weather_daily`) for reusable market/date weather rows
+- Neon-backed lead aggregate tables (`leads_daily_source`, `leads_ingest_file`)
 - Dashboard UI with:
-  - quick lookback windows
-  - priority-first weather radar (West Chester, North Wales, Hillsborough, Lindenwold)
-  - "Load All Locations" on demand (7-day all-market pull)
-  - same-day historical ranking
-  - file upload analysis for historical lead exports (CSV/XLSX)
+  - leadership-first Weather Analysis view
+  - priority-first weather radar with optional all-location expansion
+  - 7-day rolling YoY KPI cards
+  - date-specific selected market weather snapshot
+  - leads by date/source with weather impact context
 
 ## Local development
 
@@ -116,7 +118,31 @@ Schema:
 
 The dashboard loads this at runtime via `/api/markets`, so market list changes are versioned in GitHub and deploy with code.
 
-## Manual lead upload (v1)
+## Lead data ingestion
+
+The app auto-ingests CSV files in the repository root that contain:
+
+- `EstimateRequestedDate`
+- `ProgramSourceDescription`
+
+and stores seasonal rows (2/15–5/17) in Neon.
+
+Current yearly files in this repo (`2021`–`2026`) are ingested into:
+
+- `leads_daily_source`
+- `leads_ingest_file`
+
+The API route `/api/leads/overview` returns:
+
+- available years
+- totals/direct-mail mix
+- lead-by-date rows
+- lead source distribution
+- weather-impact summary for the selected benchmark market
+
+## Manual lead upload endpoint (optional)
+
+The upload API still exists if needed for ad hoc files:
 
 Upload file types:
 
@@ -130,7 +156,7 @@ Suggested columns:
 - Channel column (optional but recommended): e.g. `ProgramSourceDescription`
 - Market column (optional): e.g. `market`, `city`, `branch`
 
-If no market column exists, the currently selected dashboard location is used as fallback.
+If no market column exists, the selected dashboard location is used as fallback.
 
 Upload processing:
 
