@@ -10,7 +10,15 @@ const FALLBACK_LOCATIONS = [
   "Trenton,NJ",
 ];
 
-const LOOKBACK_OPTIONS = [7, 14, 30, 60, 90];
+const LOOKBACK_OPTIONS = [7, 14, 21, 30, 45, 60, 90];
+
+const MARKET_SORT_OPTIONS = [
+  { value: "headwind", label: "Headwind Severity" },
+  { value: "snowdepth", label: "Snow Depth (Today)" },
+  { value: "snowdays", label: "Snow Days (Lookback)" },
+  { value: "temperature", label: "Current Temperature" },
+  { value: "name", label: "Market Name" },
+];
 
 function formatNumber(value, digits = 0) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) {
@@ -43,29 +51,75 @@ function formatDateLabel(value) {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-function marketOptionLabel(market) {
+function marketLabel(market) {
   if (!market) return "";
   return market.label || market.name || market.id || "";
 }
 
+function headwindWeight(level) {
+  if (level === "high") return 3;
+  if (level === "medium") return 2;
+  return 1;
+}
+
+function headwindBadgeClass(level) {
+  if (level === "high") return "badge badge-high";
+  if (level === "medium") return "badge badge-medium";
+  return "badge badge-low";
+}
+
+function sortMarkets(markets, mode) {
+  const rows = [...markets];
+
+  rows.sort((a, b) => {
+    if (mode === "name") {
+      return marketLabel(a).localeCompare(marketLabel(b));
+    }
+
+    if (mode === "snowdepth") {
+      return (b.today?.snowdepth ?? 0) - (a.today?.snowdepth ?? 0);
+    }
+
+    if (mode === "snowdays") {
+      return (b.lookback?.snowDays ?? 0) - (a.lookback?.snowDays ?? 0);
+    }
+
+    if (mode === "temperature") {
+      return (b.today?.temp ?? -999) - (a.today?.temp ?? -999);
+    }
+
+    const severityDelta = headwindWeight(b.headwindLevel) - headwindWeight(a.headwindLevel);
+    if (severityDelta !== 0) return severityDelta;
+
+    return (b.headwindScore ?? 0) - (a.headwindScore ?? 0);
+  });
+
+  return rows;
+}
+
 export default function HomePage() {
   const [markets, setMarkets] = useState([]);
+  const [marketsSource, setMarketsSource] = useState("");
   const [marketsUpdatedAt, setMarketsUpdatedAt] = useState("");
   const [marketsLoading, setMarketsLoading] = useState(true);
   const [marketsError, setMarketsError] = useState("");
 
   const [selectedLocation, setSelectedLocation] = useState(FALLBACK_LOCATIONS[0]);
   const [customLocation, setCustomLocation] = useState("");
-  const [lookbackDays, setLookbackDays] = useState(30);
+  const [lookbackDays, setLookbackDays] = useState(21);
+  const [marketSortMode, setMarketSortMode] = useState("headwind");
 
   const [weather, setWeather] = useState(null);
+  const [marketWeather, setMarketWeather] = useState(null);
   const [analysis2022, setAnalysis2022] = useState(null);
   const [uploadedAnalysis, setUploadedAnalysis] = useState(null);
 
   const [loadingWeather, setLoadingWeather] = useState(true);
+  const [loadingMarketWeather, setLoadingMarketWeather] = useState(true);
   const [loading2022, setLoading2022] = useState(true);
 
   const [weatherError, setWeatherError] = useState("");
+  const [marketWeatherError, setMarketWeatherError] = useState("");
   const [analysisError, setAnalysisError] = useState("");
   const [uploadError, setUploadError] = useState("");
 
@@ -90,9 +144,9 @@ export default function HomePage() {
     return markets
       .map((market) => ({
         value: market.name,
-        label: marketOptionLabel(market) || market.name,
+        label: marketLabel(market),
       }))
-      .filter((option) => option.value);
+      .filter((entry) => entry.value);
   }, [markets]);
 
   const location = useMemo(() => {
@@ -103,6 +157,10 @@ export default function HomePage() {
 
     return selectedLocation;
   }, [selectedLocation, customLocation, locationOptions]);
+
+  const sortedMarketWeather = useMemo(() => {
+    return sortMarkets(marketWeather?.markets || [], marketSortMode);
+  }, [marketWeather, marketSortMode]);
 
   useEffect(() => {
     let active = true;
@@ -120,6 +178,7 @@ export default function HomePage() {
 
         if (active) {
           setMarkets(Array.isArray(payload.markets) ? payload.markets : []);
+          setMarketsSource(payload.source || "");
           setMarketsUpdatedAt(payload.updatedAt || "");
         }
       } catch (error) {
@@ -141,8 +200,8 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    const validValues = new Set(locationOptions.map((option) => option.value));
-    if (selectedLocation !== "__custom" && !validValues.has(selectedLocation)) {
+    const valid = new Set(locationOptions.map((entry) => entry.value));
+    if (selectedLocation !== "__custom" && !valid.has(selectedLocation)) {
       setSelectedLocation(locationOptions[0]?.value || FALLBACK_LOCATIONS[0]);
     }
   }, [locationOptions, selectedLocation]);
@@ -150,7 +209,7 @@ export default function HomePage() {
   useEffect(() => {
     let active = true;
 
-    async function loadWeather() {
+    async function loadSelectedWeather() {
       setLoadingWeather(true);
       setWeatherError("");
 
@@ -162,10 +221,9 @@ export default function HomePage() {
         const response = await fetch(`/api/weather?${params.toString()}`, {
           cache: "no-store",
         });
-
         const payload = await response.json();
         if (!response.ok) {
-          throw new Error(payload.error || "Unable to load weather data.");
+          throw new Error(payload.error || "Unable to load selected market weather.");
         }
 
         if (active) {
@@ -183,11 +241,51 @@ export default function HomePage() {
       }
     }
 
-    loadWeather();
+    loadSelectedWeather();
     return () => {
       active = false;
     };
   }, [location, lookbackDays]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadAllMarketWeather() {
+      setLoadingMarketWeather(true);
+      setMarketWeatherError("");
+
+      try {
+        const params = new URLSearchParams({
+          lookbackDays: String(lookbackDays),
+        });
+        const response = await fetch(`/api/weather/markets?${params.toString()}`, {
+          cache: "no-store",
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error || "Unable to load market weather radar.");
+        }
+
+        if (active) {
+          setMarketWeather(payload);
+        }
+      } catch (error) {
+        if (active) {
+          setMarketWeather(null);
+          setMarketWeatherError(error.message);
+        }
+      } finally {
+        if (active) {
+          setLoadingMarketWeather(false);
+        }
+      }
+    }
+
+    loadAllMarketWeather();
+    return () => {
+      active = false;
+    };
+  }, [lookbackDays]);
 
   useEffect(() => {
     let active = true;
@@ -210,8 +308,8 @@ export default function HomePage() {
         }
       } catch (error) {
         if (active) {
-          setAnalysisError(error.message);
           setAnalysis2022(null);
+          setAnalysisError(error.message);
         }
       } finally {
         if (active) {
@@ -248,7 +346,6 @@ export default function HomePage() {
         method: "POST",
         body: formData,
       });
-
       const payload = await response.json();
       if (!response.ok) {
         throw new Error(payload.error || "Upload analysis failed.");
@@ -279,7 +376,10 @@ export default function HomePage() {
         },
         body: JSON.stringify({
           question: trimmed,
-          weatherContext: weather,
+          weatherContext: {
+            selectedMarket: weather,
+            marketRadar: marketWeather,
+          },
           analysisContext: {
             seed2022: analysis2022,
             uploaded: uploadedAnalysis,
@@ -300,27 +400,56 @@ export default function HomePage() {
     }
   }
 
+  const overview = marketWeather?.overview || null;
+
   return (
     <main className="container">
-      <header className="header">
-        <h1>Internal Weather + Lead Dashboard</h1>
-        <p>
-          Fast weather lookbacks, lead strategy context, and OpenAI-assisted
-          interpretation for market planning.
-        </p>
-      </header>
+      <section className="hero-panel">
+        <div>
+          <h1>Weather + Lead Timing Command Center</h1>
+          <p>
+            Multi-market weather radar for direct-mail timing, lead headwinds, and
+            operational planning.
+          </p>
+          <p className="subtle">
+            Markets source:{" "}
+            <strong>
+              {marketsSource || (marketsLoading ? "Loading..." : "Fallback list")}
+            </strong>
+            {marketsUpdatedAt ? ` | Updated: ${marketsUpdatedAt}` : ""}
+          </p>
+        </div>
+        <div className="hero-stats">
+          <div className="stat-chip">
+            <span>Markets</span>
+            <strong>{formatNumber(overview?.totalMarkets || locationOptions.length)}</strong>
+          </div>
+          <div className="stat-chip">
+            <span>High Headwind</span>
+            <strong>{formatNumber(overview?.highHeadwinds || 0)}</strong>
+          </div>
+          <div className="stat-chip">
+            <span>Avg Temp</span>
+            <strong>{formatTemp(overview?.avgTodayTemp, 0)}</strong>
+          </div>
+          <div className="stat-chip">
+            <span>Avg Snow Depth</span>
+            <strong>{formatNumber(overview?.avgSnowDepth, 2)} in</strong>
+          </div>
+        </div>
+      </section>
 
-      <section className="panel controls">
+      <section className="panel controls modern-controls">
         <div className="control-group">
-          <label htmlFor="location">Location</label>
+          <label htmlFor="location">Selected Market Deep Dive</label>
           <select
             id="location"
             value={selectedLocation}
             onChange={(event) => setSelectedLocation(event.target.value)}
           >
-            {locationOptions.map((option) => (
-              <option value={option.value} key={option.value}>
-                {option.label}
+            {locationOptions.map((entry) => (
+              <option key={entry.value} value={entry.value}>
+                {entry.label}
               </option>
             ))}
             <option value="__custom">Custom...</option>
@@ -349,127 +478,137 @@ export default function HomePage() {
           </select>
         </div>
 
+        <div className="control-group">
+          <label htmlFor="sort-mode">Market Sort</label>
+          <select
+            id="sort-mode"
+            value={marketSortMode}
+            onChange={(event) => setMarketSortMode(event.target.value)}
+          >
+            {MARKET_SORT_OPTIONS.map((option) => (
+              <option value={option.value} key={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <div className="control-note">
-          <strong>Security:</strong> API keys stay server-side in Vercel
-          environment variables.{" "}
-          {marketsLoading
-            ? "Loading market config..."
-            : `${locationOptions.length} configured market(s) from GitHub-backed markets.json.`}
-          {marketsUpdatedAt ? ` Updated: ${marketsUpdatedAt}.` : ""}
+          <strong>Security:</strong> all API keys remain server-side in Vercel
+          environment variables.
         </div>
       </section>
 
       {marketsError && <p className="error">{marketsError}</p>}
       {weatherError && <p className="error">{weatherError}</p>}
+      {marketWeatherError && <p className="error">{marketWeatherError}</p>}
       {analysisError && <p className="error">{analysisError}</p>}
       {uploadError && <p className="error">{uploadError}</p>}
 
-      <section className="grid">
-        <article className="panel">
-          <h2>Current Conditions ({weather?.location || location})</h2>
-          {loadingWeather ? (
-            <p>Loading weather...</p>
-          ) : (
-            <>
-              <p className="big">{formatTemp(weather?.today?.temp)}</p>
-              <p>{weather?.today?.conditions || "--"}</p>
-              <ul>
-                <li>High: {formatTemp(weather?.today?.tempmax)}</li>
-                <li>Low: {formatTemp(weather?.today?.tempmin)}</li>
-                <li>Humidity: {formatPercent(weather?.today?.humidity)}</li>
-                <li>Precip Prob: {formatPercent(weather?.today?.precipprob)}</li>
-              </ul>
-            </>
-          )}
-        </article>
+      <section className="panel">
+        <div className="panel-title-row">
+          <h2>Market Weather Radar</h2>
+          <span className="subtle">
+            Cross-market snapshot for direct-mail timing decisions.
+          </span>
+        </div>
 
-        <article className="panel">
-          <h2>Same Day Last Year</h2>
-          {loadingWeather ? (
-            <p>Loading comparison...</p>
-          ) : (
-            <>
-              <p className="big">
-                {formatDateLabel(weather?.sameDayLastYear?.datetime)}
-              </p>
+        {loadingMarketWeather ? (
+          <p>Loading all market weather...</p>
+        ) : (
+          <>
+            {(marketWeather?.errors || []).length > 0 && (
               <ul>
-                <li>High: {formatTemp(weather?.sameDayLastYear?.tempmax)}</li>
-                <li>Low: {formatTemp(weather?.sameDayLastYear?.tempmin)}</li>
-                <li>Snow: {formatNumber(weather?.sameDayLastYear?.snow, 2)} in</li>
-                <li>
-                  Snow Depth:{" "}
-                  {formatNumber(weather?.sameDayLastYear?.snowdepth, 2)} in
-                </li>
+                {marketWeather.errors.map((entry) => (
+                  <li key={`${entry.market}-${entry.error}`}>
+                    {entry.market}: {entry.error}
+                  </li>
+                ))}
               </ul>
-            </>
-          )}
-        </article>
+            )}
 
-        <article className="panel">
-          <h2>5-Year Same-Day Rank</h2>
-          {loadingWeather ? (
-            <p>Loading rank...</p>
-          ) : (
-            <>
-              <ul>
-                <li>{weather?.sameDayFiveYear?.highRankText || "--"}</li>
-                <li>{weather?.sameDayFiveYear?.lowRankText || "--"}</li>
-                <li>{weather?.sameDayFiveYear?.humidityRankText || "--"}</li>
-              </ul>
-              <p>
-                Avg High: {formatTemp(weather?.sameDayFiveYear?.avgHigh, 1)} /
-                Avg Low: {formatTemp(weather?.sameDayFiveYear?.avgLow, 1)}
-              </p>
-            </>
-          )}
-        </article>
-
-        <article className="panel">
-          <h2>Lookback Summary ({lookbackDays} days)</h2>
-          {loadingWeather ? (
-            <p>Loading summary...</p>
-          ) : (
-            <ul>
-              <li>Avg High: {formatTemp(weather?.lookback?.avgHigh, 1)}</li>
-              <li>Avg Low: {formatTemp(weather?.lookback?.avgLow, 1)}</li>
-              <li>Snow Days: {formatNumber(weather?.lookback?.snowDays)}</li>
-              <li>Total Snow: {formatNumber(weather?.lookback?.totalSnow, 2)} in</li>
-              <li>
-                Max Snow Depth: {formatNumber(weather?.lookback?.maxSnowDepth, 2)} in
-              </li>
-              <li>
-                Precip Days: {formatNumber(weather?.lookback?.precipDays)}
-              </li>
-            </ul>
-          )}
-        </article>
+            <div className="market-grid">
+              {sortedMarketWeather.map((market) => (
+                <article className="market-card" key={market.id || market.name}>
+                  <div className="market-card-top">
+                    <h3>{marketLabel(market)}</h3>
+                    <span className={headwindBadgeClass(market.headwindLevel)}>
+                      {(market.headwindLevel || "low").toUpperCase()}
+                    </span>
+                  </div>
+                  <p className="market-condition">{market.today?.conditions || "--"}</p>
+                  <div className="metric-grid">
+                    <div>
+                      <span>Current</span>
+                      <strong>{formatTemp(market.today?.temp, 0)}</strong>
+                    </div>
+                    <div>
+                      <span>Snow Depth</span>
+                      <strong>{formatNumber(market.today?.snowdepth, 2)} in</strong>
+                    </div>
+                    <div>
+                      <span>Snow Days</span>
+                      <strong>{formatNumber(market.lookback?.snowDays)}</strong>
+                    </div>
+                    <div>
+                      <span>Avg High</span>
+                      <strong>{formatTemp(market.lookback?.avgHigh, 1)}</strong>
+                    </div>
+                  </div>
+                  <p className="signal-line">{market.directMailSignal}</p>
+                </article>
+              ))}
+            </div>
+          </>
+        )}
       </section>
 
-      <section className="panel">
-        <h2>3-Day Forecast</h2>
-        {loadingWeather ? (
-          <p>Loading forecast...</p>
-        ) : (
-          <div className="forecast-grid">
-            {(weather?.forecast || []).map((day) => (
-              <div className="forecast-card" key={day.datetime}>
-                <h3>{formatDateLabel(day.datetime)}</h3>
-                <p>{day.conditions || "--"}</p>
-                <p>High: {formatTemp(day.tempmax)}</p>
-                <p>Low: {formatTemp(day.tempmin)}</p>
-                <p>Precip: {formatPercent(day.precipprob)}</p>
-              </div>
-            ))}
-          </div>
-        )}
+      <section className="grid two-panel">
+        <article className="panel">
+          <h2>Selected Market: {weather?.location || location}</h2>
+          {loadingWeather ? (
+            <p>Loading selected market weather...</p>
+          ) : (
+            <>
+              <p className="big">{formatTemp(weather?.today?.temp, 0)}</p>
+              <p>{weather?.today?.conditions || "--"}</p>
+              <ul>
+                <li>High: {formatTemp(weather?.today?.tempmax, 0)}</li>
+                <li>Low: {formatTemp(weather?.today?.tempmin, 0)}</li>
+                <li>Humidity: {formatPercent(weather?.today?.humidity, 0)}</li>
+                <li>Precip Prob: {formatPercent(weather?.today?.precipprob, 0)}</li>
+                <li>Snow: {formatNumber(weather?.today?.snow, 2)} in</li>
+                <li>Snow Depth: {formatNumber(weather?.today?.snowdepth, 2)} in</li>
+              </ul>
+            </>
+          )}
+        </article>
+
+        <article className="panel">
+          <h2>3-Day Outlook</h2>
+          {loadingWeather ? (
+            <p>Loading forecast...</p>
+          ) : (
+            <div className="forecast-grid">
+              {(weather?.forecast || []).map((day) => (
+                <div className="forecast-card" key={day.datetime}>
+                  <h3>{formatDateLabel(day.datetime)}</h3>
+                  <p>{day.conditions || "--"}</p>
+                  <p>High: {formatTemp(day.tempmax, 0)}</p>
+                  <p>Low: {formatTemp(day.tempmin, 0)}</p>
+                  <p>Precip: {formatPercent(day.precipprob, 0)}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </article>
       </section>
 
       <section className="panel">
         <h2>Manual Lead Upload (CSV/XLSX)</h2>
         <p className="subtle">
-          Upload historical lead exports and join them to weather by market/day.
-          This powers direct-mail timing insights before scheduled imports are
-          added.
+          Upload historical lead exports, aggregate by market/day, and join to
+          weather to evaluate direct-mail timing pressure.
         </p>
 
         <form className="upload-form" onSubmit={handleUpload}>
@@ -479,11 +618,10 @@ export default function HomePage() {
               <input
                 id="lead-file"
                 type="file"
-                accept=".csv,.xlsx,.xlsm,.xls"
+                accept=".csv,.xlsx,.xlsm"
                 onChange={(event) => setUploadFile(event.target.files?.[0] || null)}
               />
             </div>
-
             <div className="control-group">
               <label htmlFor="date-column">Date column</label>
               <input
@@ -493,7 +631,6 @@ export default function HomePage() {
                 placeholder="EstimateRequestedDate"
               />
             </div>
-
             <div className="control-group">
               <label htmlFor="channel-column">Channel column</label>
               <input
@@ -503,21 +640,20 @@ export default function HomePage() {
                 placeholder="ProgramSourceDescription"
               />
             </div>
-
             <div className="control-group">
               <label htmlFor="market-column">Market column (optional)</label>
               <input
                 id="market-column"
                 value={marketColumnInput}
                 onChange={(event) => setMarketColumnInput(event.target.value)}
-                placeholder="market, city, or branch column"
+                placeholder="market, city, or branch"
               />
             </div>
           </div>
 
           <div className="upload-actions">
             <p className="subtle">
-              If no market column exists, fallback market is <strong>{location}</strong>.
+              If market column is missing, fallback market is <strong>{location}</strong>.
             </p>
             <button type="submit" disabled={uploading}>
               {uploading ? "Analyzing..." : "Upload & Analyze"}
@@ -538,156 +674,54 @@ export default function HomePage() {
               {uploadedAnalysis?.dateRange?.end || "--"}
             </p>
             <p>
-              Total leads: {formatNumber(uploadedAnalysis?.totals?.totalLeads)} |
-              Direct mail: {formatNumber(uploadedAnalysis?.totals?.directMailLeads)} (
+              Total leads: {formatNumber(uploadedAnalysis?.totals?.totalLeads)} | Direct
+              mail: {formatNumber(uploadedAnalysis?.totals?.directMailLeads)} (
               {formatPercent(uploadedAnalysis?.totals?.directMailPct, 2)})
             </p>
-
-            {(uploadedAnalysis.warnings || []).length > 0 && (
-              <ul>
-                {(uploadedAnalysis.warnings || []).map((warning, index) => (
-                  <li key={`${warning}-${index}`}>{warning}</li>
-                ))}
-              </ul>
-            )}
-
-            <div className="two-col">
-              <div>
-                <h3>Top Channels</h3>
-                <ul>
-                  {(uploadedAnalysis.topChannels || []).map((item) => (
-                    <li key={item.channel}>
-                      {item.channel}: {item.count}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <h3>Market Timing Signals</h3>
-                <div className="table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Market</th>
-                        <th>Leads</th>
-                        <th>DM %</th>
-                        <th>Signal</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(uploadedAnalysis.markets || []).map((item) => (
-                        <tr key={item.market}>
-                          <td>{item.market}</td>
-                          <td>{item.totalLeads}</td>
-                          <td>{formatPercent(item.directMailPct, 1)}</td>
-                          <td>{item.timingSignal}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-
-            <h3>Recent Daily Market Rows (joined with weather)</h3>
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Market</th>
-                    <th>Leads</th>
-                    <th>DM Leads</th>
-                    <th>Snow</th>
-                    <th>Snow Depth</th>
-                    <th>Temp Max</th>
-                    <th>Conditions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(uploadedAnalysis.daily || []).slice(0, 30).map((row) => (
-                    <tr key={`${row.market}-${row.date}`}>
-                      <td>{row.date}</td>
-                      <td>{row.market}</td>
-                      <td>{row.totalLeads}</td>
-                      <td>{row.directMailLeads}</td>
-                      <td>{formatNumber(row.weather?.snow, 2)}</td>
-                      <td>{formatNumber(row.weather?.snowdepth, 2)}</td>
-                      <td>{formatTemp(row.weather?.tempmax, 0)}</td>
-                      <td>{row.weather?.conditions || "--"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
           </div>
         )}
       </section>
 
-      <section className="panel">
-        <h2>2022 Seed Analysis (Local Workbook)</h2>
-        {loading2022 ? (
-          <p>Loading workbook summary...</p>
-        ) : analysis2022 ? (
-          <>
-            <p>
-              Leads: {formatNumber(analysis2022?.leads?.total)} | Direct Mail:{" "}
-              {formatNumber(analysis2022?.leads?.directMail?.total)} (
-              {formatPercent(analysis2022?.leads?.directMail?.pctOfTotal, 2)})
-            </p>
-            <p>
-              Lead Date Range: {analysis2022?.leads?.dateRange?.start || "--"} to{" "}
-              {analysis2022?.leads?.dateRange?.end || "--"}
-            </p>
-            <p>
-              Avg leads on snow days:{" "}
-              {formatNumber(analysis2022?.weatherImpact?.avgLeadsOnSnowDays, 2)} | on
-              non-snow days:{" "}
-              {formatNumber(analysis2022?.weatherImpact?.avgLeadsOnNonSnowDays, 2)}
-            </p>
-            <div className="two-col">
-              <div>
-                <h3>Top Lead Sources</h3>
-                <ul>
-                  {(analysis2022?.leads?.topSources || []).slice(0, 8).map((item) => (
-                    <li key={item.source}>
-                      {item.source}: {item.count}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <h3>Direct Mail Channels</h3>
-                <ul>
-                  {(analysis2022?.leads?.directMail?.channels || []).map((item) => (
-                    <li key={item.source}>
-                      {item.source}: {item.count}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </>
-        ) : (
-          <p>No analysis data found.</p>
-        )}
-      </section>
+      <section className="grid two-panel">
+        <article className="panel">
+          <h2>2022 Seed Snapshot</h2>
+          {loading2022 ? (
+            <p>Loading 2022 seed analysis...</p>
+          ) : analysis2022 ? (
+            <>
+              <p>
+                Leads: {formatNumber(analysis2022?.leads?.total)} | Direct Mail:{" "}
+                {formatNumber(analysis2022?.leads?.directMail?.total)} (
+                {formatPercent(analysis2022?.leads?.directMail?.pctOfTotal, 2)})
+              </p>
+              <p>
+                Avg leads on snow days:{" "}
+                {formatNumber(analysis2022?.weatherImpact?.avgLeadsOnSnowDays, 2)} | on
+                non-snow days:{" "}
+                {formatNumber(analysis2022?.weatherImpact?.avgLeadsOnNonSnowDays, 2)}
+              </p>
+            </>
+          ) : (
+            <p>No analysis data found.</p>
+          )}
+        </article>
 
-      <section className="panel">
-        <h2>Ask OpenAI About Weather + Leads</h2>
-        <form onSubmit={askCopilot} className="chat-form">
-          <textarea
-            value={question}
-            onChange={(event) => setQuestion(event.target.value)}
-            placeholder="Example: Based on uploaded market results, where should we reduce direct-mail volume if snow depth exceeds 0.5in this week?"
-            rows={4}
-          />
-          <button type="submit" disabled={chatLoading}>
-            {chatLoading ? "Thinking..." : "Ask"}
-          </button>
-        </form>
-        {chatError && <p className="error">{chatError}</p>}
-        {chatAnswer && <p className="chat-answer">{chatAnswer}</p>}
+        <article className="panel">
+          <h2>Ask OpenAI (Strategy Copilot)</h2>
+          <form onSubmit={askCopilot} className="chat-form">
+            <textarea
+              value={question}
+              onChange={(event) => setQuestion(event.target.value)}
+              placeholder="Example: Which markets should hold direct-mail drops this week based on current snow depth and recent weather?"
+              rows={4}
+            />
+            <button type="submit" disabled={chatLoading}>
+              {chatLoading ? "Thinking..." : "Ask"}
+            </button>
+          </form>
+          {chatError && <p className="error">{chatError}</p>}
+          {chatAnswer && <p className="chat-answer">{chatAnswer}</p>}
+        </article>
       </section>
     </main>
   );

@@ -10,13 +10,16 @@ For production/internal use, secrets should stay server-side.
 ## Features in this baseline
 
 - Weather endpoint proxy for Visual Crossing (`/api/weather`)
+- Multi-market weather radar endpoint (`/api/weather/markets`)
 - OpenAI conversational endpoint (`/api/chat`)
 - 2022 workbook summary endpoint (`/api/analysis/seed-2022`)
-- GitHub-backed market configuration endpoint (`/api/markets`, from `data/markets.json`)
+- GitHub-backed market configuration endpoint (`/api/markets`) that prefers:
+  1. `GMB Locations.csv` (if present)
+  2. `data/markets.json` fallback
 - Manual lead upload + aggregation endpoint (`/api/analysis/upload`)
 - Dashboard UI with:
   - quick lookback windows
-  - multi-location selection from `data/markets.json`
+  - multi-location weather radar from all configured locations
   - same-day historical ranking
   - sample direct-mail + snow impact context from 2022 data
   - file upload analysis for historical lead exports (CSV/XLSX)
@@ -73,6 +76,21 @@ For an internal dashboard without building your own auth yet:
 5. Rotate keys quarterly and immediately on personnel changes.
 
 ## Market configuration (fixed list in GitHub)
+
+Primary source (recommended):
+
+- `GMB Locations.csv`
+
+Expected headers:
+
+- `Locality`
+- `Administrative area`
+- `Country / Region`
+- `Postal code`
+
+The app builds a location query as `Locality,Administrative area` (example: `West Chester,PA`).
+
+Fallback source:
 
 Edit:
 
