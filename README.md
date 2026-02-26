@@ -12,11 +12,14 @@ For production/internal use, secrets should stay server-side.
 - Weather endpoint proxy for Visual Crossing (`/api/weather`)
 - OpenAI conversational endpoint (`/api/chat`)
 - 2022 workbook summary endpoint (`/api/analysis/seed-2022`)
+- GitHub-backed market configuration endpoint (`/api/markets`, from `data/markets.json`)
+- Manual lead upload + aggregation endpoint (`/api/analysis/upload`)
 - Dashboard UI with:
   - quick lookback windows
-  - multi-location selection
+  - multi-location selection from `data/markets.json`
   - same-day historical ranking
   - sample direct-mail + snow impact context from 2022 data
+  - file upload analysis for historical lead exports (CSV/XLSX)
 
 ## Local development
 
@@ -68,6 +71,54 @@ For an internal dashboard without building your own auth yet:
 3. Restrict access to known company IP ranges if your Vercel plan supports it.
 4. Keep all API keys only in Vercel env vars (never in client code).
 5. Rotate keys quarterly and immediately on personnel changes.
+
+## Market configuration (fixed list in GitHub)
+
+Edit:
+
+- `data/markets.json`
+
+Schema:
+
+```json
+{
+  "updatedAt": "YYYY-MM-DD",
+  "markets": [
+    {
+      "id": "west-chester-pa",
+      "name": "West Chester,PA",
+      "label": "West Chester, PA",
+      "state": "PA",
+      "region": "Southeast PA"
+    }
+  ]
+}
+```
+
+The dashboard loads this at runtime via `/api/markets`, so market list changes are versioned in GitHub and deploy with code.
+
+## Manual lead upload (v1)
+
+Upload file types:
+
+- `.csv`
+- `.xlsx`
+- `.xlsm`
+
+Suggested columns:
+
+- Date column (required): e.g. `EstimateRequestedDate`
+- Channel column (optional but recommended): e.g. `ProgramSourceDescription`
+- Market column (optional): e.g. `market`, `city`, `branch`
+
+If no market column exists, the currently selected dashboard location is used as fallback.
+
+Upload processing:
+
+1. Parse rows from file
+2. Aggregate to daily market-level lead metrics
+3. Join weather metrics by market and date (Visual Crossing)
+4. Return market timing signals for direct-mail planning
 
 ## Legacy files
 

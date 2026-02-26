@@ -1,0 +1,40 @@
+{
+  "updatedAt": "2026-02-25",
+  "markets": [
+    {
+      "id": "west-chester-pa",
+      "name": "West Chester,PA",
+      "label": "West Chester, PA",
+      "state": "PA",
+      "region": "Southeast PA"
+    },
+    {
+      "id": "philadelphia-pa",
+      "name": "Philadelphia,PA",
+      "label": "Philadelphia, PA",
+      "state": "PA",
+      "region": "Southeast PA"
+    },
+    {
+      "id": "lancaster-pa",
+      "name": "Lancaster,PA",
+      "label": "Lancaster, PA",
+      "state": "PA",
+      "region": "Central PA"
+    },
+    {
+      "id": "allentown-pa",
+      "name": "Allentown,PA",
+      "label": "Allentown, PA",
+      "state": "PA",
+      "region": "Lehigh Valley"
+    },
+    {
+      "id": "trenton-nj",
+      "name": "Trenton,NJ",
+      "label": "Trenton, NJ",
+      "state": "NJ",
+      "region": "Central NJ"
+    }
+  ]
+}
