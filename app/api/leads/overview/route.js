@@ -7,22 +7,27 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const yearParam = Number.parseInt(searchParams.get("year") || "", 10);
-    const benchmarkMarket =
-      searchParams.get("benchmarkMarket")?.trim() || "West Chester,PA";
+    const sourceFilter = searchParams.get("source")?.trim() || "All Sources";
+    const compareYearsParam = (searchParams.get("compareYears") || "")
+      .split(",")
+      .map((value) => Number.parseInt(value.trim(), 10))
+      .filter((value) => Number.isFinite(value));
 
     const syncReport = await syncLeadFilesToDb();
     const overview = await getLeadOverview({
       year: Number.isFinite(yearParam) ? yearParam : null,
-      benchmarkMarket,
+      compareYears: compareYearsParam,
+      sourceFilter,
       weatherApiKey: process.env.VISUAL_CROSSING_API_KEY || null,
     });
 
     return NextResponse.json({
       fetchedAt: new Date().toISOString(),
-      benchmarkMarket,
       storage: {
         leads: "neon",
-        weather: overview.weatherStorage,
+        weather: Array.isArray(overview.weatherStorage)
+          ? overview.weatherStorage.join(", ")
+          : overview.weatherStorage || "none",
       },
       syncReport,
       ...overview,

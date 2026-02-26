@@ -9,19 +9,19 @@
 body {
   margin: 0;
   font-family: Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  background: #f3f5f8;
-  color: #10212f;
+  background: #f2f5f8;
+  color: #132637;
 }
 
-select,
 input,
+select,
 textarea,
 button {
   font: inherit;
 }
 
 .analysis-page {
-  max-width: 1260px;
+  max-width: 1280px;
   margin: 0 auto;
   padding: 24px;
 }
@@ -32,39 +32,34 @@ button {
 
 .analysis-header h1 {
   margin: 0;
-  font-size: 2rem;
-  color: #132637;
-}
-
-.analysis-header p {
-  margin: 6px 0 0;
-  color: #5a6a78;
+  font-size: 1.95rem;
+  color: #173048;
 }
 
 .top-grid {
   display: grid;
-  grid-template-columns: 1.2fr 1fr;
+  grid-template-columns: 1.1fr 0.9fr;
   gap: 14px;
   margin-bottom: 14px;
 }
 
 .panel {
-  background: #ffffff;
-  border: 1px solid #dbe3eb;
+  background: #fff;
+  border: 1px solid #d8e2eb;
   border-radius: 12px;
   padding: 16px;
-  box-shadow: 0 2px 8px rgba(12, 32, 54, 0.05);
+  box-shadow: 0 3px 10px rgba(14, 34, 54, 0.05);
 }
 
 .panel h2 {
   margin: 0 0 12px;
   font-size: 1.05rem;
-  color: #17314a;
+  color: #1a3a57;
 }
 
 .filter-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 10px;
 }
 
@@ -72,15 +67,15 @@ label {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-size: 0.88rem;
-  color: #496073;
+  font-size: 0.86rem;
+  color: #4b6378;
 }
 
 input,
 select,
 textarea {
   width: 100%;
-  border: 1px solid #c8d4df;
+  border: 1px solid #c9d5df;
   border-radius: 8px;
   padding: 10px 11px;
   background: #fff;
@@ -95,30 +90,73 @@ textarea {
   gap: 10px;
 }
 
-button {
-  border: 0;
-  border-radius: 8px;
-  background: #0f8a57;
-  color: #fff;
-  padding: 10px 14px;
-  cursor: pointer;
-  font-weight: 600;
-}
-
-button:disabled {
-  opacity: 0.7;
-  cursor: wait;
-}
-
-.chat-form {
+.compare-years {
+  margin-top: 12px;
   display: grid;
   gap: 8px;
 }
 
-.chat-answer {
-  white-space: pre-wrap;
-  margin-top: 10px;
-  line-height: 1.45;
+.compare-years strong {
+  font-size: 0.88rem;
+  color: #38546d;
+}
+
+.compare-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.compare-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid #cad7e4;
+  border-radius: 999px;
+  padding: 4px 9px;
+  color: #35516a;
+  background: #f8fbff;
+}
+
+button {
+  border: 0;
+  border-radius: 8px;
+  background: #14865a;
+  color: #fff;
+  padding: 10px 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.72;
+  cursor: wait;
+}
+
+.metric-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.metric-list li {
+  border: 1px solid #dde6ef;
+  border-radius: 8px;
+  padding: 9px;
+  display: grid;
+  gap: 4px;
+}
+
+.metric-list span {
+  font-size: 0.78rem;
+  color: #5f7689;
+}
+
+.metric-list strong {
+  font-size: 0.98rem;
 }
 
 .kpi-grid {
@@ -129,9 +167,9 @@ button:disabled {
 }
 
 .kpi-card {
-  background: #ffffff;
-  border: 1px solid #dbe3eb;
+  border: 1px solid #d8e2eb;
   border-radius: 12px;
+  background: #fff;
   padding: 14px;
 }
 
@@ -157,16 +195,64 @@ button:disabled {
 
 .kpi-value {
   margin: 10px 0 3px;
-  font-size: 1.75rem;
-  color: #123553;
+  font-size: 1.68rem;
+  color: #173453;
   font-weight: 700;
 }
 
 .kpi-delta {
   margin: 0;
   font-size: 0.85rem;
-  color: #2f7f57;
+  color: #17724d;
   font-weight: 600;
+}
+
+.chat-form {
+  display: grid;
+  gap: 8px;
+}
+
+.chat-answer {
+  margin-top: 10px;
+  white-space: pre-wrap;
+  line-height: 1.45;
+}
+
+.trend-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.trend-controls {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.chart-wrap {
+  width: 100%;
+  height: 360px;
+}
+
+.side-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+.mini-chart-card {
+  border: 1px solid #dce6ef;
+  border-radius: 10px;
+  padding: 10px;
+  background: #fbfdff;
+}
+
+.mini-chart-card h3 {
+  margin: 0 0 8px;
 }
 
 .table-wrap {
@@ -182,107 +268,49 @@ table {
 
 th,
 td {
-  border: 1px solid #e2e8ef;
-  padding: 8px 9px;
+  border: 1px solid #e2e9f0;
   text-align: left;
-  font-size: 0.84rem;
   vertical-align: top;
+  padding: 8px 9px;
+  font-size: 0.84rem;
 }
 
 th {
-  background: #f5f8fb;
-  color: #334c63;
+  background: #f4f8fc;
+  color: #36506a;
 }
 
-.detail-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  margin-top: 14px;
-  margin-bottom: 14px;
-}
-
-.metric-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.metric-list li {
-  border: 1px solid #e1e8ef;
-  border-radius: 8px;
-  padding: 9px;
-  display: grid;
-  gap: 5px;
-}
-
-.metric-list span {
-  color: #61798d;
-  font-size: 0.77rem;
-}
-
-.metric-list strong {
-  font-size: 1rem;
-}
-
-.source-bars {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 8px;
-}
-
-.source-label {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  font-size: 0.83rem;
-  margin-bottom: 3px;
-}
-
-.source-bar-track,
 .daily-bar-track {
   width: 100%;
-  height: 8px;
+  height: 10px;
   border-radius: 999px;
-  background: #e6edf4;
+  background: #e5ecf3;
   overflow: hidden;
 }
 
-.source-bar-fill,
 .daily-bar-fill {
   height: 100%;
-  background: linear-gradient(90deg, #18a86a, #0f8a57);
   border-radius: 999px;
-}
-
-.daily-bar-track {
-  height: 10px;
+  background: linear-gradient(90deg, #15a068, #0e8155);
 }
 
 .subtle {
   margin: 0;
-  color: #5c7081;
+  color: #5c7184;
   font-size: 0.86rem;
-  line-height: 1.4;
 }
 
 .error {
   margin: 0 0 10px;
   background: #fff0f0;
-  border: 1px solid #ffcfcf;
-  color: #af1f1f;
+  border: 1px solid #ffcece;
+  color: #af1b1b;
   border-radius: 8px;
   padding: 9px 10px;
 }
 
-@media (max-width: 1024px) {
-  .top-grid,
-  .detail-grid {
+@media (max-width: 1040px) {
+  .top-grid {
     grid-template-columns: 1fr;
   }
 
@@ -291,7 +319,7 @@ th {
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 680px) {
   .analysis-page {
     padding: 14px;
   }
@@ -302,5 +330,9 @@ th {
 
   .metric-list {
     grid-template-columns: 1fr;
+  }
+
+  .trend-controls {
+    width: 100%;
   }
 }
