@@ -125,7 +125,7 @@ The app auto-ingests CSV files in the repository root that contain:
 - `EstimateRequestedDate`
 - `ProgramSourceDescription`
 
-and stores seasonal rows (2/15–5/17) in Neon.
+and stores seasonal rows (2/15–5/10) in Neon.
 
 Current yearly files in this repo (`2021`–`2026`) are ingested into:
 

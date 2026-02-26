@@ -464,21 +464,6 @@ export default function HomePage() {
                 ))}
               </select>
             </label>
-
-            <label>
-              Lead Source Filter
-              <select
-                value={sourceFilter}
-                onChange={(event) => setSourceFilter(event.target.value)}
-                disabled={loadingLeads}
-              >
-                {sourceOptions.map((source) => (
-                  <option key={source} value={source}>
-                    {source}
-                  </option>
-                ))}
-              </select>
-            </label>
           </div>
 
           <div className="filter-actions">
@@ -656,6 +641,21 @@ export default function HomePage() {
             </label>
 
             <label>
+              Lead Source Filter
+              <select
+                value={sourceFilter}
+                onChange={(event) => setSourceFilter(event.target.value)}
+                disabled={loadingLeads}
+              >
+                {sourceOptions.map((source) => (
+                  <option key={source} value={source}>
+                    {source}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
               Weather Line
               <select
                 value={weatherLineMetric}
@@ -817,19 +817,36 @@ export default function HomePage() {
       <section className="panel">
         <div className="table-header-row">
           <h2>Leads by Date vs Weather</h2>
-          <label>
-            Table Year
-            <select
-              value={tableYear || selectedYear || ""}
-              onChange={(event) => setTableYear(Number(event.target.value))}
-            >
-              {availableYears.map((year) => (
-                <option key={year} value={year}>
-                  {year}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="table-header-controls">
+            <label>
+              Lead Source Filter
+              <select
+                value={sourceFilter}
+                onChange={(event) => setSourceFilter(event.target.value)}
+                disabled={loadingLeads}
+              >
+                {sourceOptions.map((source) => (
+                  <option key={source} value={source}>
+                    {source}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Table Year
+              <select
+                value={tableYear || selectedYear || ""}
+                onChange={(event) => setTableYear(Number(event.target.value))}
+              >
+                {availableYears.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         </div>
         <div className="table-wrap">
           <table>

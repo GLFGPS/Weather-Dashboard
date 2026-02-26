@@ -305,6 +305,16 @@ th {
   min-width: 130px;
 }
 
+.table-header-controls {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.table-header-controls label {
+  min-width: 165px;
+}
+
 .daily-bar-track {
   width: 100%;
   height: 10px;
@@ -364,5 +374,9 @@ th {
   .table-header-row {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .table-header-controls {
+    width: 100%;
   }
 }
