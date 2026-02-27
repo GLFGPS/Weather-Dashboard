@@ -1,0 +1,88 @@
+{
+  "title": "Lawn Lead Prediction Model - Analysis Summary",
+  "data_coverage": {
+    "years": [
+      2021,
+      2022,
+      2023,
+      2024,
+      2025
+    ],
+    "season_window": "Feb 15 - May 10",
+    "total_leads_analyzed": 47742,
+    "total_days_analyzed": 412,
+    "weather_location": "West Chester, PA (representative market)"
+  },
+  "key_findings": {
+    "yoy_growth": {
+      "description": "Lead volume has grown year-over-year",
+      "data": [
+        {
+          "year": 2021,
+          "total": 8181,
+          "yoy_growth": NaN
+        },
+        {
+          "year": 2022,
+          "total": 8112,
+          "yoy_growth": -0.8434176751008438
+        },
+        {
+          "year": 2023,
+          "total": 8998,
+          "yoy_growth": 10.92209072978303
+        },
+        {
+          "year": 2024,
+          "total": 9973,
+          "yoy_growth": 10.835741275839084
+        },
+        {
+          "year": 2025,
+          "total": 12478,
+          "yoy_growth": 25.11781810889402
+        },
+        {
+          "year": 2026,
+          "total": 316,
+          "yoy_growth": -97.46754287546081
+        }
+      ]
+    },
+    "day_of_week": {
+      "weekday_avg": 141.3,
+      "saturday_avg": 52.1,
+      "saturday_discount_pct": 63.2,
+      "sunday_avg": 32.3,
+      "best_weekday": "Monday"
+    },
+    "weather_impact": {
+      "sunny_day_avg": 124.8,
+      "sunny_vs_baseline_pct": 7.7,
+      "snow_day_avg": 47.4,
+      "snow_vs_baseline_pct": -59.1,
+      "rain_day_avg": 109.5,
+      "rain_vs_baseline_pct": -5.5,
+      "cloudy_day_avg": 112.9,
+      "cloudy_vs_baseline_pct": -2.6
+    },
+    "seasonality": {
+      "peak_period": "Mid-March to Mid-April (typically weeks 11-15)",
+      "ramp_up_starts": "Late February / Early March",
+      "wind_down": "Late April into May"
+    }
+  },
+  "model_performance": {
+    "algorithm": "Gradient Boosted Regression",
+    "cross_val_mae": 35.68,
+    "r_squared": 0.98,
+    "mape": 21.0
+  },
+  "dashboard_integration": {
+    "daily_forecast": "Use model to predict next 7-14 days of expected leads based on weather forecast",
+    "weather_adjustment": "Show expected lead multiplier: Sunny +X%, Snow -Y%, Rain -Z% vs baseline",
+    "seasonal_baseline": "Display historical seasonal curve with current year overlay",
+    "dm_timing": "Highlight optimal DM drop windows (warm, sunny weeks ahead)",
+    "api_endpoint_suggestion": "/api/leads/forecast?date=YYYY-MM-DD&temp_max=70&sunshine_hrs=9&dow=2"
+  }
+}

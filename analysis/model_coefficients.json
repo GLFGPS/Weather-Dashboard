@@ -1,0 +1,63 @@
+{
+  "_description": "Pre-computed model lookup tables for dashboard integration without Python runtime",
+  "_generated": "2026-02-27",
+
+  "weather_multipliers": {
+    "_note": "Lead multiplier vs typical weekday baseline. Apply to seasonal baseline to get adjusted forecast.",
+    "sunny_warm": { "label": "Sunny & Warm (70°F+, 8hrs+ sun)", "multiplier": 1.35, "description": "+35% vs baseline" },
+    "partly_cloudy": { "label": "Partly Cloudy", "multiplier": 1.10, "description": "+10% vs baseline" },
+    "typical": { "label": "Typical Day", "multiplier": 1.00, "description": "baseline" },
+    "cloudy_cool": { "label": "Cloudy & Cool (50°F, <4hrs sun)", "multiplier": 1.03, "description": "+3% vs baseline" },
+    "light_rain": { "label": "Light Rain", "multiplier": 0.94, "description": "-6% vs baseline" },
+    "rain": { "label": "Rain", "multiplier": 0.86, "description": "-14% vs baseline" },
+    "cloudy_overcast": { "label": "Cloudy/Overcast", "multiplier": 0.72, "description": "-28% vs baseline" },
+    "snow": { "label": "Snow Day", "multiplier": 0.41, "description": "-59% vs baseline" }
+  },
+
+  "dow_multipliers": {
+    "_note": "Day-of-week multiplier vs weekday average. Monday is the strongest day.",
+    "monday": 1.28,
+    "tuesday": 1.03,
+    "wednesday": 0.98,
+    "thursday": 0.90,
+    "friday": 0.82,
+    "saturday": 0.37,
+    "sunday": 0.23
+  },
+
+  "seasonal_baseline_weekly": {
+    "_note": "Average weekday lead count by calendar week (5-year average, at 2025 volume level). Multiply by dow_multiplier and weather_multiplier for adjusted forecast.",
+    "7": 77,
+    "8": 108,
+    "9": 131,
+    "10": 184,
+    "11": 210,
+    "12": 249,
+    "13": 216,
+    "14": 220,
+    "15": 229,
+    "16": 220,
+    "17": 192,
+    "18": 144,
+    "19": 85
+  },
+
+  "temperature_impact": {
+    "_note": "Lead volume relative to baseline by temperature range",
+    "below_40": { "pct_vs_baseline": -46, "label": "Below 40°F" },
+    "40_50": { "pct_vs_baseline": -17, "label": "40-50°F" },
+    "50_60": { "pct_vs_baseline": -1, "label": "50-60°F" },
+    "60_70": { "pct_vs_baseline": 20, "label": "60-70°F" },
+    "70_80": { "pct_vs_baseline": 15, "label": "70-80°F" },
+    "above_80": { "pct_vs_baseline": 7, "label": "Above 80°F" }
+  },
+
+  "year_over_year_growth": {
+    "2021": 8181,
+    "2022": 8112,
+    "2023": 8998,
+    "2024": 9973,
+    "2025": 12478,
+    "avg_annual_growth_pct": 11.5
+  }
+}

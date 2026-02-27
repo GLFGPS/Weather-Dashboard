@@ -1,0 +1,8 @@
+scenario,predicted_leads,vs_baseline_pct
+Typical Weekday (baseline),164.6,0.0
+"Sunny & Warm (70°F, 10hrs sun)",221.6,34.7
+"Cloudy & Cool (50°F, 3hrs sun)",169.2,2.9
+"Rainy Day (55°F, 1hr sun)",142.2,-13.6
+"Snow Day (35°F, snow)",150.3,-8.7
+"Peak Spring (65°F, sunny, Wed)",203.0,23.3
+Saturday (same as peak spring),87.2,-47.0
