@@ -212,74 +212,50 @@ button:disabled {
   font-weight: 600;
 }
 
-.decision-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.decision-card {
-  border: 1px solid #dce6ef;
-  border-radius: 10px;
-  padding: 12px;
-  background: #fbfdff;
-  display: grid;
-  gap: 8px;
-}
-
-.decision-header {
+.forecast-window-toggle {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.forecast-window-toggle button {
+  background: #eef4fb;
+  color: #2f4960;
+  border: 1px solid #cad8e5;
+  padding: 7px 12px;
+}
+
+.forecast-window-toggle button.active {
+  background: #118257;
+  color: #fff;
+  border-color: #118257;
+}
+
+.forecast-summary-grid {
+  margin-top: 10px;
+  margin-bottom: 10px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
-.decision-header h3 {
-  margin: 0;
-  font-size: 0.95rem;
-  color: #27435c;
-}
-
-.state-pill {
-  border-radius: 999px;
-  padding: 4px 10px;
-  font-size: 0.8rem;
-  font-weight: 700;
-}
-
-.state-pill.go {
-  background: #e5f7ef;
-  color: #156c45;
-}
-
-.state-pill.caution {
-  background: #fff5df;
-  color: #9a6a00;
-}
-
-.state-pill.hold {
-  background: #ffe9e9;
-  color: #9f2525;
-}
-
-.state-pill.unknown {
-  background: #edf2f7;
-  color: #486177;
-}
-
-.decision-action {
-  margin: 0;
-  font-weight: 600;
-  color: #1f3b54;
-}
-
-.decision-reasons {
-  margin: 0;
-  padding-left: 18px;
-  color: #4c6478;
-  font-size: 0.84rem;
+.forecast-mini-card {
+  border: 1px solid #dce6ef;
+  border-radius: 10px;
+  background: #fbfdff;
+  padding: 10px;
   display: grid;
   gap: 4px;
+}
+
+.forecast-mini-card span {
+  font-size: 0.8rem;
+  color: #4d667d;
+}
+
+.forecast-mini-card strong {
+  color: #183852;
+  font-size: 1.08rem;
 }
 
 .chat-form {
@@ -318,6 +294,10 @@ button:disabled {
 }
 
 .lag-chart-wrap {
+  height: 300px;
+}
+
+.forecast-chart-wrap {
   height: 300px;
 }
 
@@ -443,8 +423,8 @@ th {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .decision-grid {
-    grid-template-columns: 1fr;
+  .forecast-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

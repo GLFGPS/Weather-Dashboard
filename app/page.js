@@ -104,54 +104,6 @@ function nextFiftyAbove(value) {
   return (Math.floor(safeValue / 50) + 1) * 50;
 }
 
-function buildDecisionState({ tempMax, snowDepth, precip, leadDelta }) {
-  let score = 0;
-  const reasons = [];
-
-  if (snowDepth !== null && snowDepth >= 1) {
-    score += 3;
-    reasons.push("Deep snow on ground");
-  } else if (snowDepth !== null && snowDepth > 0) {
-    score += 2;
-    reasons.push("Snow still on ground");
-  }
-
-  if (tempMax !== null && tempMax < 42) {
-    score += 1;
-    reasons.push("Cold max temperature");
-  }
-
-  if (precip !== null && precip >= 0.2) {
-    score += 1;
-    reasons.push("Wet conditions");
-  }
-
-  if (leadDelta !== null && leadDelta <= -10) {
-    score += 2;
-    reasons.push("Leads trailing weather-adjusted baseline");
-  } else if (leadDelta !== null && leadDelta >= 10) {
-    score -= 1;
-    reasons.push("Leads outperforming weather-adjusted baseline");
-  }
-
-  let state = "Go";
-  let action = "Proceed with standard outreach and staffing cadence.";
-  if (score >= 5) {
-    state = "Hold";
-    action = "Pause broad outreach and focus on high-intent follow-up.";
-  } else if (score >= 3) {
-    state = "Caution";
-    action = "Use segmented targeting and monitor next-day lead response.";
-  }
-
-  return {
-    state,
-    score,
-    reasons: reasons.length ? reasons : ["Conditions supportive for standard plans."],
-    action,
-  };
-}
-
 export default function HomePage() {
   const [markets, setMarkets] = useState([]);
   const [selectedMarket, setSelectedMarket] = useState(FALLBACK_MARKETS[0]);
@@ -176,11 +128,16 @@ export default function HomePage() {
   const [loadingMarketWeather, setLoadingMarketWeather] = useState(true);
   const [loadingSelectedWeather, setLoadingSelectedWeather] = useState(true);
   const [loadingLeads, setLoadingLeads] = useState(true);
+  const [loadingPriorityForecast, setLoadingPriorityForecast] = useState(true);
 
   const [marketsError, setMarketsError] = useState("");
   const [weatherError, setWeatherError] = useState("");
   const [selectedWeatherError, setSelectedWeatherError] = useState("");
   const [leadsError, setLeadsError] = useState("");
+  const [priorityForecastError, setPriorityForecastError] = useState("");
+
+  const [forecastWindowDays, setForecastWindowDays] = useState(15);
+  const [priorityForecast, setPriorityForecast] = useState(null);
 
   const [question, setQuestion] = useState("");
   const [chatAnswer, setChatAnswer] = useState("");
@@ -248,8 +205,6 @@ export default function HomePage() {
   const conditionMatrix = insights.conditionMatrix || [];
   const lagEffect = insights.lagEffect || { lags: [], bestByMetric: {} };
   const goalTracking = insights.goalTracking || null;
-  const marketElasticity = insights.marketElasticity || [];
-  const decisionByDate = insights.decisionByDate || [];
 
   const goalTrackingData = goalTracking?.points || [];
   const goalAxisMax = useMemo(() => {
@@ -276,30 +231,37 @@ export default function HomePage() {
     [lagEffect, lagMetric],
   );
   const lagBest = lagEffect?.bestByMetric?.[lagMetric] || null;
-  const selectedGoalPoint = goalTrackingData.find((point) => point.date === analysisDate) || null;
-  const selectedLeadPoint =
-    selectedSeries?.points?.find((point) => point.date === analysisDate) || null;
-  const selectedDecision = decisionByDate.find((row) => row.date === analysisDate) || null;
-  const selectedMarketDecision = useMemo(() => {
-    const tempMax = Number(selectedWeather?.selectedDay?.tempmax);
-    const snowDepth = Number(selectedWeather?.selectedDay?.snowdepth);
-    const precip = Number(selectedWeather?.selectedDay?.precip);
-    const leadDelta =
-      selectedLeadPoint && selectedGoalPoint?.expectedLeads !== null
-        ? selectedLeadPoint.filteredLeads - Number(selectedGoalPoint?.expectedLeads)
-        : null;
-
-    if (!Number.isFinite(tempMax) && !Number.isFinite(snowDepth) && !Number.isFinite(precip)) {
-      return null;
+  const forecastPoints = priorityForecast?.forecast || [];
+  const forecastSummary = useMemo(() => {
+    if (!forecastPoints.length) {
+      return {
+        avgMax: null,
+        avgMin: null,
+        avgPrecipProb: null,
+        avgSnowDepth: null,
+      };
     }
-
-    return buildDecisionState({
-      tempMax: Number.isFinite(tempMax) ? tempMax : null,
-      snowDepth: Number.isFinite(snowDepth) ? snowDepth : null,
-      precip: Number.isFinite(precip) ? precip : null,
-      leadDelta: Number.isFinite(leadDelta) ? leadDelta : null,
-    });
-  }, [selectedWeather, selectedLeadPoint, selectedGoalPoint]);
+    const values = forecastPoints.reduce(
+      (acc, point) => {
+        if (Number.isFinite(Number(point.avgTempMax))) acc.max.push(Number(point.avgTempMax));
+        if (Number.isFinite(Number(point.avgTempMin))) acc.min.push(Number(point.avgTempMin));
+        if (Number.isFinite(Number(point.avgPrecipProb)))
+          acc.precipProb.push(Number(point.avgPrecipProb));
+        if (Number.isFinite(Number(point.avgSnowDepth)))
+          acc.snowDepth.push(Number(point.avgSnowDepth));
+        return acc;
+      },
+      { max: [], min: [], precipProb: [], snowDepth: [] },
+    );
+    const avg = (input) =>
+      input.length ? input.reduce((sum, value) => sum + value, 0) / input.length : null;
+    return {
+      avgMax: avg(values.max),
+      avgMin: avg(values.min),
+      avgPrecipProb: avg(values.precipProb),
+      avgSnowDepth: avg(values.snowDepth),
+    };
+  }, [forecastPoints]);
 
   useEffect(() => {
     if (!locationOptions.length) return;
@@ -418,6 +380,36 @@ export default function HomePage() {
       active = false;
     };
   }, [analysisDate, showAllLocations, selectedMarket]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadPriorityForecast() {
+      setLoadingPriorityForecast(true);
+      setPriorityForecastError("");
+      try {
+        const params = new URLSearchParams({
+          days: String(forecastWindowDays),
+        });
+        const response = await fetch(`/api/weather/priority-forecast?${params.toString()}`, {
+          cache: "no-store",
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error || "Unable to load blended forecast.");
+        }
+        if (active) setPriorityForecast(payload);
+      } catch (error) {
+        if (active) setPriorityForecastError(error.message);
+      } finally {
+        if (active) setLoadingPriorityForecast(false);
+      }
+    }
+
+    loadPriorityForecast();
+    return () => {
+      active = false;
+    };
+  }, [forecastWindowDays]);
 
   useEffect(() => {
     if (!analysisDate || !selectedMarket) return;
@@ -629,12 +621,13 @@ export default function HomePage() {
         </article>
       </section>
 
-      {(marketsError || weatherError || selectedWeatherError || leadsError) && (
+      {(marketsError || weatherError || selectedWeatherError || leadsError || priorityForecastError) && (
         <section>
           {marketsError && <p className="error">{marketsError}</p>}
           {weatherError && <p className="error">{weatherError}</p>}
           {selectedWeatherError && <p className="error">{selectedWeatherError}</p>}
           {leadsError && <p className="error">{leadsError}</p>}
+          {priorityForecastError && <p className="error">{priorityForecastError}</p>}
         </section>
       )}
 
@@ -681,64 +674,113 @@ export default function HomePage() {
       </section>
 
       <section className="panel">
-        <h2>Market-Day Decision State</h2>
-        <div className="decision-grid">
-          <article className="decision-card">
-            <div className="decision-header">
-              <h3>Priority Blend ({formatDateLabel(analysisDate)})</h3>
-              <span
-                className={`state-pill ${
-                  selectedDecision?.state ? selectedDecision.state.toLowerCase() : "unknown"
-                }`}
+        <div className="trend-header">
+          <h2>Priority Market Forecast Blend</h2>
+          <div className="forecast-window-toggle">
+            {[3, 7, 15].map((days) => (
+              <button
+                key={days}
+                type="button"
+                className={forecastWindowDays === days ? "active" : ""}
+                onClick={() => setForecastWindowDays(days)}
               >
-                {selectedDecision?.state || "--"}
-              </span>
-            </div>
-            <p className="decision-action">
-              {selectedDecision?.action || "Waiting for weather + lead baseline data."}
-            </p>
-            <p className="subtle">
-              Actual Leads: {formatNumber(selectedDecision?.actualLeads, 0)} | Expected:{" "}
-              {formatNumber(selectedDecision?.expectedLeads, 0)} | Delta:{" "}
-              {formatNumber(selectedDecision?.leadDelta, 1)}
-            </p>
-            <ul className="decision-reasons">
-              {(selectedDecision?.reasons || ["No decision factors available for this day."]).map(
-                (reason, index) => (
-                  <li key={`${reason}-${index}`}>{reason}</li>
-                ),
-              )}
-            </ul>
-          </article>
-
-          <article className="decision-card">
-            <div className="decision-header">
-              <h3>Selected Market ({marketLabel(selectedRadarMarket) || selectedMarket})</h3>
-              <span
-                className={`state-pill ${
-                  selectedMarketDecision?.state ? selectedMarketDecision.state.toLowerCase() : "unknown"
-                }`}
-              >
-                {selectedMarketDecision?.state || "--"}
-              </span>
-            </div>
-            <p className="decision-action">
-              {selectedMarketDecision?.action || "Waiting for selected market weather data."}
-            </p>
-            <p className="subtle">
-              Max Temp: {formatTemp(selectedWeather?.selectedDay?.tempmax, 0)} | Snow Depth:{" "}
-              {formatNumber(selectedWeather?.selectedDay?.snowdepth, 2)} in | Precip:{" "}
-              {formatNumber(selectedWeather?.selectedDay?.precip, 2)} in
-            </p>
-            <ul className="decision-reasons">
-              {(selectedMarketDecision?.reasons || ["No market-specific signal yet."]).map(
-                (reason, index) => (
-                <li key={`${reason}-${index}`}>{reason}</li>
-                ),
-              )}
-            </ul>
-          </article>
+                {days} Day
+              </button>
+            ))}
+          </div>
         </div>
+        <p className="subtle">
+          Forecast is averaged across West Chester, North Wales, Hillsborough, and Lindenwold.
+        </p>
+        {loadingPriorityForecast ? (
+          <p>Loading blended forecast...</p>
+        ) : (
+          <>
+            <div className="forecast-summary-grid">
+              <article className="forecast-mini-card">
+                <span>Avg Max Temp</span>
+                <strong>{formatTemp(forecastSummary.avgMax, 0)}</strong>
+              </article>
+              <article className="forecast-mini-card">
+                <span>Avg Min Temp</span>
+                <strong>{formatTemp(forecastSummary.avgMin, 0)}</strong>
+              </article>
+              <article className="forecast-mini-card">
+                <span>Avg Precip Prob</span>
+                <strong>{formatPercent(forecastSummary.avgPrecipProb, 0)}</strong>
+              </article>
+              <article className="forecast-mini-card">
+                <span>Avg Snow Depth</span>
+                <strong>{formatNumber(forecastSummary.avgSnowDepth, 2)} in</strong>
+              </article>
+            </div>
+
+            <div className="chart-wrap forecast-chart-wrap">
+              <ResponsiveContainer width="100%" height={300}>
+                <ComposedChart data={forecastPoints}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="dayLabel" />
+                  <YAxis yAxisId="temp" />
+                  <YAxis yAxisId="precipProb" orientation="right" />
+                  <Tooltip />
+                  <Legend />
+                  <Line
+                    yAxisId="temp"
+                    type="monotone"
+                    dataKey="avgTempMax"
+                    name="Avg Temp Max"
+                    stroke="#1f4f86"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                  <Line
+                    yAxisId="temp"
+                    type="monotone"
+                    dataKey="avgTempMin"
+                    name="Avg Temp Min"
+                    stroke="#118257"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                  <Bar
+                    yAxisId="precipProb"
+                    dataKey="avgPrecipProb"
+                    name="Avg Precip Prob (%)"
+                    fill="#8a5cf5"
+                    barSize={10}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Avg Max Temp</th>
+                    <th>Avg Min Temp</th>
+                    <th>Avg UV</th>
+                    <th>Avg Precip Prob</th>
+                    <th>Avg Snow Depth</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {forecastPoints.map((point) => (
+                    <tr key={point.date}>
+                      <td>{point.dayLabel}</td>
+                      <td>{formatTemp(point.avgTempMax, 0)}</td>
+                      <td>{formatTemp(point.avgTempMin, 0)}</td>
+                      <td>{formatNumber(point.avgUv, 1)}</td>
+                      <td>{formatPercent(point.avgPrecipProb, 0)}</td>
+                      <td>{formatNumber(point.avgSnowDepth, 2)} in</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </section>
 
       <section className="panel">
@@ -1145,48 +1187,6 @@ export default function HomePage() {
                 ) : (
                   <tr>
                     <td colSpan={10}>No condition buckets available for this selection.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      <section className="panel">
-        <h2>Market Weather Elasticity Score (Priority Markets)</h2>
-        {loadingLeads ? (
-          <p>Calculating market sensitivity...</p>
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Market</th>
-                  <th>Elasticity Score</th>
-                  <th>Temp Correlation</th>
-                  <th>Snow Correlation</th>
-                  <th>Precip Correlation</th>
-                  <th>Profile</th>
-                  <th>Sample Days</th>
-                </tr>
-              </thead>
-              <tbody>
-                {marketElasticity.length ? (
-                  marketElasticity.map((row) => (
-                    <tr key={row.marketName}>
-                      <td>{row.marketName}</td>
-                      <td>{formatNumber(row.elasticityScore, 1)}</td>
-                      <td>{formatNumber(row.temp?.correlation, 2)}</td>
-                      <td>{formatNumber(row.snowDepth?.correlation, 2)}</td>
-                      <td>{formatNumber(row.precip?.correlation, 2)}</td>
-                      <td>{row.profile}</td>
-                      <td>{row.sampleSize}</td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={7}>No market elasticity results yet.</td>
                   </tr>
                 )}
               </tbody>
