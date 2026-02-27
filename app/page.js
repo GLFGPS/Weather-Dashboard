@@ -1142,7 +1142,7 @@ export default function HomePage() {
                 </div>
                 <div className="prediction-factors">
                   <div className="factor-pill factor-season">
-                    <span className="factor-name">{leadForecast.dmInHome ? "Baseline (Organic + DM)" : "Baseline (No DM)"}</span>
+                    <span className="factor-name">{leadForecast.dmInHome ? "Historical Avg + DM" : "Historical Avg"}</span>
                     <span className="factor-value">
                       {leadForecast.seasonalBaseline}
                       {leadForecast.dmInHome && leadForecast.dmAddon > 0 && (
