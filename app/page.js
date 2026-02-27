@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import {
+  Area,
   Bar,
   CartesianGrid,
   ComposedChart,
   Legend,
   Line,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -126,6 +128,11 @@ export default function HomePage() {
   const [chatAnswer, setChatAnswer] = useState("");
   const [chatError, setChatError] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
+
+  const [growthPct, setGrowthPct] = useState(0);
+  const [forecast, setForecast] = useState(null);
+  const [seasonalCurve, setSeasonalCurve] = useState(null);
+  const [loadingForecast, setLoadingForecast] = useState(true);
 
   const fourthMetric = useMemo(
     () =>
@@ -389,6 +396,55 @@ export default function HomePage() {
     }
   }
 
+  // Fetch forecast for analysis date and seasonal baseline curve
+  useEffect(() => {
+    let active = true;
+    async function loadForecast() {
+      setLoadingForecast(true);
+      try {
+        const dateToForecast = analysisDate || new Date().toISOString().slice(0, 10);
+        const params = new URLSearchParams({ date: dateToForecast });
+        if (growthPct) params.set("growth_pct", String(growthPct));
+
+        const weatherDay = selectedWeather?.selectedDay;
+        if (weatherDay) {
+          if (weatherDay.tempmax != null) params.set("temp_max", String(weatherDay.tempmax));
+          if (weatherDay.uvindex != null) params.set("sunshine_hrs", String(Math.min(weatherDay.uvindex * 1.5, 14)));
+          if (weatherDay.precip != null) params.set("precip_in", String(weatherDay.precip));
+          if (weatherDay.snowdepth != null && weatherDay.snowdepth > 0) params.set("snowfall_in", String(weatherDay.snowdepth));
+        }
+
+        const resp = await fetch(`/api/leads/forecast?${params.toString()}`, { cache: "no-store" });
+        const payload = await resp.json();
+        if (active) setForecast(payload?.forecasts?.[0] || null);
+      } catch {
+        if (active) setForecast(null);
+      } finally {
+        if (active) setLoadingForecast(false);
+      }
+    }
+    loadForecast();
+    return () => { active = false; };
+  }, [analysisDate, selectedWeather, growthPct]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadCurve() {
+      try {
+        const year = selectedYear || new Date().getFullYear();
+        const params = new URLSearchParams({ seasonal_curve: String(year) });
+        if (growthPct) params.set("growth_pct", String(growthPct));
+        const resp = await fetch(`/api/leads/forecast?${params.toString()}`, { cache: "no-store" });
+        const payload = await resp.json();
+        if (active) setSeasonalCurve(payload);
+      } catch {
+        if (active) setSeasonalCurve(null);
+      }
+    }
+    loadCurve();
+    return () => { active = false; };
+  }, [selectedYear, growthPct]);
+
   const overlayData = useMemo(() => {
     const map = new Map();
     for (const series of displaySeries) {
@@ -401,8 +457,71 @@ export default function HomePage() {
         map.set(point.dayKey, row);
       }
     }
+
+    if (seasonalCurve?.curve) {
+      for (const cp of seasonalCurve.curve) {
+        const row = map.get(cp.dayKey) || { dayKey: cp.dayKey };
+        row.baselineWeekday = cp.weekdayBaseline;
+        row.baselineSaturday = cp.saturdayBaseline;
+        map.set(cp.dayKey, row);
+      }
+    }
+
     return [...map.values()].sort((a, b) => a.dayKey.localeCompare(b.dayKey));
-  }, [displaySeries]);
+  }, [displaySeries, seasonalCurve]);
+
+  // Weather badge logic for table rows
+  const forecastWeatherBadge = useCallback((point) => {
+    if (!point?.weather) return null;
+    const temp = point.weather.avgTempMax;
+    const snow = point.weather.avgSnowDepth ?? 0;
+    if (temp == null) return null;
+
+    if (snow > 0.5) return { label: "Snow", color: "#e0e0e0", textColor: "#333", pct: -59 };
+    if (temp < 40) return { label: "Cold", color: "#bbdefb", textColor: "#0d47a1", pct: -46 };
+    if (temp >= 60 && temp < 70) return { label: "Sunny", color: "#fff9c4", textColor: "#f57f17", pct: +20 };
+    if (temp >= 70 && temp < 80) return { label: "Warm", color: "#c8e6c9", textColor: "#2e7d32", pct: +15 };
+    if (temp >= 80) return { label: "Hot", color: "#ffccbc", textColor: "#bf360c", pct: +7 };
+    if (temp >= 50 && temp < 60) return { label: "Mild", color: "#e3f2fd", textColor: "#1565c0", pct: -1 };
+    if (temp >= 40 && temp < 50) return { label: "Cool", color: "#e8eaf6", textColor: "#283593", pct: -17 };
+    return null;
+  }, []);
+
+  const currentPhase = useMemo(() => {
+    if (!forecast?.phase) return null;
+    return forecast.phase;
+  }, [forecast]);
+
+  const phaseBannerConfig = useMemo(() => {
+    if (!currentPhase) return null;
+    const configs = {
+      Early: {
+        bg: "#e3f2fd",
+        border: "#90caf9",
+        icon: "snowflake",
+        message: `Early season — weather sensitivity is VERY HIGH. Nice days can produce +${currentPhase.niceUplift}% more leads.`,
+      },
+      Ramp: {
+        bg: "#f3e5f5",
+        border: "#ce93d8",
+        icon: "trending_up",
+        message: `Ramp-up phase — weather sensitivity is HIGH. Nice days drive +${currentPhase.niceUplift}% uplift, bad days suppress ${currentPhase.badDrag}%.`,
+      },
+      Peak: {
+        bg: "#e8f5e9",
+        border: "#81c784",
+        icon: "local_florist",
+        message: `Peak season — demand is strong regardless. Weather has moderate impact (+${currentPhase.niceUplift}% nice / ${currentPhase.badDrag}% bad).`,
+      },
+      Tail: {
+        bg: "#fff3e0",
+        border: "#ffb74d",
+        icon: "schedule",
+        message: `Late season tail — leads are winding down. Bad weather accelerates the decline (${currentPhase.badDrag}%).`,
+      },
+    };
+    return configs[currentPhase.name] || null;
+  }, [currentPhase]);
 
   const selectedRadarMarket =
     (marketWeather?.markets || []).find((market) => market.name === selectedMarket) || null;
@@ -562,6 +681,86 @@ export default function HomePage() {
             {formatYoY(metricCard4, fourthMetric.digits, ` ${fourthMetric.unit}`).delta}
           </p>
         </article>
+      </section>
+
+      {/* Lead Prediction Model Section */}
+      <section className="prediction-section">
+        <article className="panel forecast-card">
+          <div className="forecast-header">
+            <h2>Lead Forecast</h2>
+            <div className="growth-calibration">
+              <label>
+                YoY Growth Adjustment
+                <div className="growth-input-row">
+                  <input
+                    type="range"
+                    min="-30"
+                    max="50"
+                    step="5"
+                    value={growthPct}
+                    onChange={(event) => setGrowthPct(Number(event.target.value))}
+                  />
+                  <span className="growth-value">{growthPct >= 0 ? "+" : ""}{growthPct}%</span>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          {loadingForecast ? (
+            <p className="subtle">Loading forecast...</p>
+          ) : forecast?.inSeason ? (
+            <div className="forecast-body">
+              <div className="forecast-main">
+                <div className="forecast-predicted">
+                  <span className="forecast-number">{forecast.predictedLeads}</span>
+                  <span className="forecast-label">expected leads</span>
+                </div>
+                <div className="forecast-date">
+                  {formatDateLabel(forecast.date)} ({forecast.dowLabel})
+                </div>
+              </div>
+              <div className="forecast-factors">
+                <div className="factor-pill factor-season">
+                  <span className="factor-name">Seasonal Baseline</span>
+                  <span className="factor-value">{forecast.seasonalBaseline}</span>
+                </div>
+                <div className="factor-pill factor-dow">
+                  <span className="factor-name">{forecast.dowLabel}</span>
+                  <span className="factor-value">{forecast.dowMultiplier}x</span>
+                </div>
+                {forecast.weatherKey && (
+                  <div className={`factor-pill factor-weather ${forecast.weatherUpliftPct >= 0 ? "factor-positive" : "factor-negative"}`}>
+                    <span className="factor-name">{forecast.weatherCondition}</span>
+                    <span className="factor-value">{forecast.weatherUpliftPct >= 0 ? "+" : ""}{forecast.weatherUpliftPct}%</span>
+                  </div>
+                )}
+                {growthPct !== 0 && (
+                  <div className="factor-pill factor-growth">
+                    <span className="factor-name">Growth Adj.</span>
+                    <span className="factor-value">{growthPct >= 0 ? "+" : ""}{growthPct}%</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : forecast ? (
+            <p className="subtle">{forecast.message || "Outside lawn season"}</p>
+          ) : (
+            <p className="subtle">Select a date within lawn season (Feb 15 - May 10)</p>
+          )}
+        </article>
+
+        {phaseBannerConfig && (
+          <article
+            className="panel phase-banner"
+            style={{ background: phaseBannerConfig.bg, borderColor: phaseBannerConfig.border }}
+          >
+            <div className="phase-content">
+              <strong className="phase-name">{currentPhase.name} Season</strong>
+              <span className="phase-sensitivity">Weather Sensitivity: {currentPhase.weatherSensitivity.toUpperCase()}</span>
+            </div>
+            <p className="phase-message">{phaseBannerConfig.message}</p>
+          </article>
+        )}
       </section>
 
       <section className="panel">
@@ -730,6 +929,19 @@ export default function HomePage() {
                     dot={false}
                   />
                 ))}
+                {seasonalCurve?.curve && (
+                  <Line
+                    yAxisId="leads"
+                    type="monotone"
+                    dataKey="baselineWeekday"
+                    name="Model Baseline"
+                    stroke="#9e9e9e"
+                    strokeDasharray="8 4"
+                    strokeWidth={2.2}
+                    dot={false}
+                    connectNulls
+                  />
+                )}
                 {displaySeries.map((series, index) => (
                   <Line
                     key={`weather-${series.year}`}
@@ -849,26 +1061,46 @@ export default function HomePage() {
           </div>
         </div>
         <div className="table-wrap">
-          <table>
+            <table>
             <thead>
               <tr>
                 <th>Date</th>
+                <th>Day</th>
                 <th>Leads (Filtered)</th>
                 <th>Total Leads</th>
-                <th>Direct Mail Leads</th>
+                <th>DM Leads</th>
+                <th>Weather Impact</th>
                 <th>Lead Bar</th>
                 <th>Avg Temp Max</th>
                 <th>Avg UV</th>
-                <th>Avg Snow Depth</th>
+                <th>Snow Depth</th>
               </tr>
             </thead>
             <tbody>
-              {(tableSeries?.points || []).map((point) => (
-                <tr key={point.date}>
+              {(tableSeries?.points || []).map((point) => {
+                const badge = forecastWeatherBadge(point);
+                const d = new Date(`${point.date}T00:00:00`);
+                const dayName = d.toLocaleDateString("en-US", { weekday: "short" });
+                const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+                return (
+                <tr key={point.date} style={isWeekend ? { background: "#f8f9fa" } : undefined}>
                   <td>{point.date}</td>
+                  <td style={isWeekend ? { fontWeight: 600, color: "#6c757d" } : undefined}>{dayName}</td>
                   <td>{point.filteredLeads}</td>
                   <td>{point.totalLeads}</td>
                   <td>{point.directMailLeads}</td>
+                  <td>
+                    {badge ? (
+                      <span
+                        className="weather-badge"
+                        style={{ background: badge.color, color: badge.textColor }}
+                      >
+                        {badge.label} {badge.pct >= 0 ? "+" : ""}{badge.pct}%
+                      </span>
+                    ) : (
+                      <span className="weather-badge weather-badge-neutral">--</span>
+                    )}
+                  </td>
                   <td>
                     <div className="daily-bar-track">
                       <div
@@ -883,7 +1115,8 @@ export default function HomePage() {
                   <td>{formatNumber(point.weather?.avgUv, 1)}</td>
                   <td>{formatNumber(point.weather?.avgSnowDepth, 2)} in</td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
