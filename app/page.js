@@ -46,6 +46,9 @@ const LAG_METRIC_OPTIONS = [
   { key: "avgSnowDepth", label: "Avg Snow Depth" },
 ];
 
+const TREND_DAY_RANGE_START = "02-15";
+const TREND_DAY_RANGE_END = "05-10";
+
 const CHART_COLORS = ["#118257", "#1f4f86", "#8a5cf5", "#f08a24", "#da3f5f", "#0f766e"];
 
 function formatNumber(value, digits = 0) {
@@ -80,6 +83,18 @@ function formatDayKeyLabel(dayKey) {
   const d = new Date(`2026-${dayKey}T00:00:00`);
   if (Number.isNaN(d.getTime())) return dayKey;
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function buildSeasonDayOptions(startDay, endDay) {
+  const start = new Date(`2024-${startDay}T00:00:00Z`);
+  const end = new Date(`2024-${endDay}T00:00:00Z`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) return [];
+
+  const options = [];
+  for (let cursor = new Date(start); cursor <= end; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+    options.push(cursor.toISOString().slice(5, 10));
+  }
+  return options;
 }
 
 function formatYoY(metric, digits = 1, suffix = "", label = "YoY") {
@@ -192,13 +207,10 @@ export default function HomePage() {
 
   const selectedSeries =
     chartSeries.find((series) => series.year === selectedYear) || chartSeries[0] || null;
-  const seasonDayOptions = useMemo(() => {
-    const dayKeys = new Set();
-    for (const point of selectedSeries?.points || []) {
-      if (point?.dayKey) dayKeys.add(point.dayKey);
-    }
-    return [...dayKeys].sort((a, b) => a.localeCompare(b));
-  }, [selectedSeries]);
+  const seasonDayOptions = useMemo(
+    () => buildSeasonDayOptions(TREND_DAY_RANGE_START, TREND_DAY_RANGE_END),
+    [],
+  );
   const rangeStartDay = trendStartDay || seasonDayOptions[0] || "";
   const rangeEndDay = trendEndDay || seasonDayOptions[seasonDayOptions.length - 1] || "";
 
