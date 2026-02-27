@@ -724,6 +724,27 @@ th {
   background: #e1f5fe;
 }
 
+.prediction-explainer {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #e2e9f0;
+}
+
+.prediction-explainer p {
+  margin: 0 0 8px;
+  font-size: 0.82rem;
+  color: #4b6378;
+  line-height: 1.5;
+}
+
+.prediction-explainer p:last-child {
+  margin-bottom: 0;
+}
+
+.prediction-explainer strong {
+  color: #1a3a57;
+}
+
 /* Weather Badge */
 .weather-badge {
   display: inline-block;

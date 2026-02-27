@@ -1250,6 +1250,21 @@ export default function HomePage() {
             );
           })}
         </div>
+
+        <div className="prediction-explainer">
+          <p>
+            <strong>Historical Avg (DM off):</strong> The average organic/digital leads per weekday for that calendar week, across 2021-2025. This is Google, Facebook, Referral, Email, Text Campaign, etc. — everything except Direct Mail.
+          </p>
+          <p>
+            <strong>Historical Avg + DM (DM on):</strong> Same organic number, plus the average DM leads per weekday for that same week across 2021-2025. It{"'"}s literally the historical average of what DM contributes on top of organic during that week.
+          </p>
+          <p>
+            So for mid-March: organic avg = 117/day, DM avg = 112/day. We historically get almost as many DM leads as organic leads that week because it{"'"}s our heaviest drop window. By end of season (May), DM only adds 5/day because drops have wound down.
+          </p>
+          <p>
+            One thing to flag: since we are mailing more each year, the 5-year DM average may understate what 2026 DM will actually deliver. The growth slider partially covers this, but it scales everything equally (organic and DM together).
+          </p>
+        </div>
       </section>
 
       <section className="panel">
