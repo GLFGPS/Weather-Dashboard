@@ -920,7 +920,7 @@ export default function HomePage() {
                 <strong>{formatPercent(forecastSummary.avgPrecipProb, 0)}</strong>
               </article>
               <article className="forecast-mini-card">
-                <span>Avg Snow Depth</span>
+                <span>Projected Snow Depth</span>
                 <strong>{formatNumber(forecastSummary.avgSnowDepth, 2)} in</strong>
               </article>
             </div>
@@ -972,7 +972,7 @@ export default function HomePage() {
                     <th>Avg Min Temp</th>
                     <th>Avg UV</th>
                     <th>Avg Precip Prob</th>
-                    <th>Avg Snow Depth</th>
+                    <th>Projected Snow Depth</th>
                   </tr>
                 </thead>
                 <tbody>
