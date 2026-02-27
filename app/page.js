@@ -1330,6 +1330,13 @@ export default function HomePage() {
         )}
       </section>
 
+      <section className="panel beta-banner-panel">
+        <p className="beta-banner-text">
+          *BELOW SECTIONS ARE IN BETA &amp; WILL BE IMPROVED OR REMOVED. DO NOT VIEW THEM AS
+          FINISHED PRODUCTS*
+        </p>
+      </section>
+
       <section className="panel">
         <div className="trend-header">
           <h2>Leads & Weather Trend</h2>

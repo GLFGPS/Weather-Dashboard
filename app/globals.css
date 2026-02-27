@@ -786,6 +786,19 @@ tr[data-weekend="true"] {
   background: #fafbfc;
 }
 
+.beta-banner-panel {
+  border-color: #f4c88a;
+  background: #fff7eb;
+  margin-bottom: 14px;
+}
+
+.beta-banner-text {
+  margin: 0;
+  color: #8a4f00;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
 @media (max-width: 1040px) {
   .top-grid {
     grid-template-columns: 1fr;
