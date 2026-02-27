@@ -69,7 +69,7 @@ function getDayOfSeason(dateStr) {
   return Math.floor((d - feb15) / 86400000);
 }
 
-function forecastDay({ date, tempMax, sunshineHrs, precipIn, snowfallIn, growthPct }) {
+function forecastDay({ date, tempMax, sunshineHrs, precipIn, snowfallIn, growthPct, dmInHome }) {
   const d = new Date(`${date}T00:00:00`);
   const jsDow = d.getDay();
   const dowName = DOW_NAMES[jsDow];
@@ -107,8 +107,10 @@ function forecastDay({ date, tempMax, sunshineHrs, precipIn, snowfallIn, growthP
     modelCoefficients.weather_multipliers.typical;
   const weatherMultiplier = hasWeatherInput ? weatherInfo.multiplier : 1.0;
 
+  const dmMultiplier = dmInHome ? 1.45 : 1.0;
+
   const predicted = Math.round(
-    seasonalBaseline * dowMultiplier * weatherMultiplier * growthMultiplier,
+    seasonalBaseline * dowMultiplier * weatherMultiplier * growthMultiplier * dmMultiplier,
   );
   const baselineForDow = Math.round(seasonalBaseline * dowMultiplier * growthMultiplier);
   const weatherUpliftPct = Math.round((weatherMultiplier - 1) * 100);
@@ -127,6 +129,8 @@ function forecastDay({ date, tempMax, sunshineHrs, precipIn, snowfallIn, growthP
     weatherCondition: hasWeatherInput ? weatherInfo.label : "No weather data",
     weatherKey: hasWeatherInput ? weatherKey : null,
     weatherMultiplier: Math.round(weatherMultiplier * 100) / 100,
+    dmInHome: !!dmInHome,
+    dmMultiplier: Math.round(dmMultiplier * 100) / 100,
     baselineForDow,
     weatherAdjustedPrediction: predicted,
     weatherUpliftPct,
@@ -225,10 +229,11 @@ export async function GET(request) {
     ? Number(searchParams.get("snowfall_in"))
     : undefined;
 
+  const dmInHome = searchParams.get("dm_in_home") === "1";
   const dates = date.split(",").map((d) => d.trim());
 
   const forecasts = dates.map((d) =>
-    forecastDay({ date: d, tempMax, sunshineHrs, precipIn, snowfallIn, growthPct }),
+    forecastDay({ date: d, tempMax, sunshineHrs, precipIn, snowfallIn, growthPct, dmInHome }),
   );
 
   return NextResponse.json({

@@ -174,6 +174,8 @@ export default function HomePage() {
   const [chatLoading, setChatLoading] = useState(false);
 
   const [growthPct, setGrowthPct] = useState(0);
+  const [forecastDate, setForecastDate] = useState("");
+  const [dmInHome, setDmInHome] = useState(false);
   const [leadForecast, setLeadForecast] = useState(null);
   const [seasonalCurve, setSeasonalCurve] = useState(null);
   const [loadingLeadForecast, setLoadingLeadForecast] = useState(true);
@@ -599,13 +601,20 @@ export default function HomePage() {
   }
 
   useEffect(() => {
+    if (!forecastDate && analysisDate) {
+      setForecastDate(analysisDate);
+    }
+  }, [analysisDate, forecastDate]);
+
+  useEffect(() => {
     let active = true;
     async function loadLeadForecast() {
       setLoadingLeadForecast(true);
       try {
-        const dateToForecast = analysisDate || new Date().toISOString().slice(0, 10);
+        const dateToForecast = forecastDate || analysisDate || new Date().toISOString().slice(0, 10);
         const params = new URLSearchParams({ date: dateToForecast });
         if (growthPct) params.set("growth_pct", String(growthPct));
+        if (dmInHome) params.set("dm_in_home", "1");
         const weatherDay = selectedWeather?.selectedDay;
         if (weatherDay) {
           if (weatherDay.tempmax != null) params.set("temp_max", String(weatherDay.tempmax));
@@ -624,7 +633,7 @@ export default function HomePage() {
     }
     loadLeadForecast();
     return () => { active = false; };
-  }, [analysisDate, selectedWeather, growthPct]);
+  }, [forecastDate, analysisDate, selectedWeather, growthPct, dmInHome]);
 
   useEffect(() => {
     let active = true;
@@ -1080,82 +1089,138 @@ export default function HomePage() {
         )}
       </section>
 
-      <section className="prediction-section">
-        <article className="panel prediction-card">
-          <div className="prediction-header">
+      <section className="panel prediction-card">
+        <div className="prediction-layout">
+          <div className="prediction-left">
             <h2>Lead Forecast</h2>
-            <div className="growth-calibration">
+            <div className="prediction-controls-row">
               <label>
-                YoY Growth Adjustment
-                <div className="growth-input-row">
-                  <input
-                    type="range"
-                    min="-30"
-                    max="50"
-                    step="5"
-                    value={growthPct}
-                    onChange={(event) => setGrowthPct(Number(event.target.value))}
-                  />
-                  <span className="growth-value">{growthPct >= 0 ? "+" : ""}{growthPct}%</span>
-                </div>
+                Forecast Date
+                <input
+                  type="date"
+                  value={forecastDate || analysisDate}
+                  min={`${new Date().getFullYear()}-02-15`}
+                  max={`${new Date().getFullYear()}-05-10`}
+                  onChange={(event) => setForecastDate(event.target.value)}
+                />
+              </label>
+              <label className="dm-toggle-label">
+                DM In Home
+                <button
+                  type="button"
+                  className={`dm-toggle ${dmInHome ? "dm-toggle-on" : ""}`}
+                  onClick={() => setDmInHome((v) => !v)}
+                >
+                  {dmInHome ? "Yes — DM Drop Active" : "No DM Drop"}
+                </button>
               </label>
             </div>
-          </div>
-          {loadingLeadForecast ? (
-            <p className="subtle">Loading forecast...</p>
-          ) : leadForecast?.inSeason ? (
-            <div className="prediction-body">
-              <div className="prediction-main">
-                <div className="prediction-predicted">
-                  <span className="prediction-number">{leadForecast.predictedLeads}</span>
-                  <span className="prediction-label">expected leads</span>
-                </div>
-                <div className="prediction-date">
-                  {formatDateLabel(leadForecast.date)} ({leadForecast.dowLabel})
-                </div>
-              </div>
-              <div className="prediction-factors">
-                <div className="factor-pill factor-season">
-                  <span className="factor-name">Seasonal Baseline</span>
-                  <span className="factor-value">{leadForecast.seasonalBaseline}</span>
-                </div>
-                <div className="factor-pill factor-dow">
-                  <span className="factor-name">{leadForecast.dowLabel}</span>
-                  <span className="factor-value">{leadForecast.dowMultiplier}x</span>
-                </div>
-                {leadForecast.weatherKey && (
-                  <div className={`factor-pill ${leadForecast.weatherUpliftPct >= 0 ? "factor-positive" : "factor-negative"}`}>
-                    <span className="factor-name">{leadForecast.weatherCondition}</span>
-                    <span className="factor-value">{leadForecast.weatherUpliftPct >= 0 ? "+" : ""}{leadForecast.weatherUpliftPct}%</span>
-                  </div>
-                )}
-                {growthPct !== 0 && (
-                  <div className="factor-pill factor-growth">
-                    <span className="factor-name">Growth Adj.</span>
-                    <span className="factor-value">{growthPct >= 0 ? "+" : ""}{growthPct}%</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : leadForecast ? (
-            <p className="subtle">{leadForecast.message || "Outside lawn season"}</p>
-          ) : (
-            <p className="subtle">Select a date within lawn season (Feb 15 - May 10)</p>
-          )}
-        </article>
 
-        {phaseBannerConfig && (
-          <article
-            className="panel phase-banner"
-            style={{ background: phaseBannerConfig.bg, borderColor: phaseBannerConfig.border }}
-          >
-            <div className="phase-content">
-              <strong className="phase-name">{currentPhase.name} Season</strong>
-              <span className="phase-sensitivity">Weather Sensitivity: {currentPhase.weatherSensitivity.toUpperCase()}</span>
+            {loadingLeadForecast ? (
+              <p className="subtle">Loading forecast...</p>
+            ) : leadForecast?.inSeason ? (
+              <div className="prediction-body">
+                <div className="prediction-main">
+                  <div className="prediction-predicted">
+                    <span className="prediction-number">{leadForecast.predictedLeads}</span>
+                    <span className="prediction-label">expected leads</span>
+                  </div>
+                  <div className="prediction-date">
+                    {formatDateLabel(leadForecast.date)} ({leadForecast.dowLabel})
+                  </div>
+                </div>
+                <div className="prediction-factors">
+                  <div className="factor-pill factor-season">
+                    <span className="factor-name">Seasonal Baseline</span>
+                    <span className="factor-value">{leadForecast.seasonalBaseline}</span>
+                  </div>
+                  <div className="factor-pill factor-dow">
+                    <span className="factor-name">{leadForecast.dowLabel}</span>
+                    <span className="factor-value">{leadForecast.dowMultiplier}x</span>
+                  </div>
+                  {leadForecast.weatherKey && (
+                    <div className={`factor-pill ${leadForecast.weatherUpliftPct >= 0 ? "factor-positive" : "factor-negative"}`}>
+                      <span className="factor-name">{leadForecast.weatherCondition}</span>
+                      <span className="factor-value">{leadForecast.weatherUpliftPct >= 0 ? "+" : ""}{leadForecast.weatherUpliftPct}%</span>
+                    </div>
+                  )}
+                  {dmInHome && (
+                    <div className="factor-pill factor-dm">
+                      <span className="factor-name">DM In Home</span>
+                      <span className="factor-value">+45%</span>
+                    </div>
+                  )}
+                  {growthPct !== 0 && (
+                    <div className="factor-pill factor-growth">
+                      <span className="factor-name">Growth Adj.</span>
+                      <span className="factor-value">{growthPct >= 0 ? "+" : ""}{growthPct}%</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : leadForecast ? (
+              <p className="subtle">{leadForecast.message || "Outside lawn season"}</p>
+            ) : (
+              <p className="subtle">Select a date within lawn season (Feb 15 - May 10)</p>
+            )}
+          </div>
+
+          <div className="prediction-right">
+            <div className="prediction-math">
+              <h3>How This Works</h3>
+              <p>Predicted from 5 years of data (48K leads, 2021-2025). The model multiplies three factors together:</p>
+              <div className="math-formula">
+                <span>Baseline</span> <span className="math-op">&times;</span>
+                <span>DOW</span> <span className="math-op">&times;</span>
+                <span>Weather</span>
+                {dmInHome && (<><span className="math-op">&times;</span><span>DM</span></>)}
+                {growthPct !== 0 && (<><span className="math-op">&times;</span><span>Growth</span></>)}
+                <span className="math-op">=</span>
+                <span className="math-result">{leadForecast?.predictedLeads ?? "—"}</span>
+              </div>
+              <div className="growth-calibration">
+                <label>
+                  YoY Growth Adjustment
+                  <div className="growth-input-row">
+                    <input
+                      type="range"
+                      min="-30"
+                      max="50"
+                      step="5"
+                      value={growthPct}
+                      onChange={(event) => setGrowthPct(Number(event.target.value))}
+                    />
+                    <span className="growth-value">{growthPct >= 0 ? "+" : ""}{growthPct}%</span>
+                  </div>
+                </label>
+              </div>
+              <p className="subtle">R² = 0.98 &middot; Trained on seasonal curve + day of week + weather conditions</p>
             </div>
-            <p className="phase-message">{phaseBannerConfig.message}</p>
-          </article>
-        )}
+          </div>
+        </div>
+
+        <div className="phase-track">
+          {[
+            { name: "Early", range: "Feb 15 – Mar 1", sensitivity: "Very High", bg: "#e3f2fd", border: "#90caf9", uplift: "+50%" },
+            { name: "Ramp", range: "Mar 1 – 17", sensitivity: "High", bg: "#f3e5f5", border: "#ce93d8", uplift: "+34%" },
+            { name: "Peak", range: "Mar 17 – Apr 16", sensitivity: "Moderate", bg: "#e8f5e9", border: "#81c784", uplift: "+10%" },
+            { name: "Tail", range: "Apr 16 – May 10", sensitivity: "Low-Mod", bg: "#fff3e0", border: "#ffb74d", uplift: "+5%" },
+          ].map((phase) => {
+            const isActive = currentPhase?.name === phase.name;
+            return (
+              <div
+                key={phase.name}
+                className={`phase-bucket ${isActive ? "phase-bucket-active" : ""}`}
+                style={{ background: isActive ? phase.bg : "#f8f9fa", borderColor: isActive ? phase.border : "#e0e0e0" }}
+              >
+                <strong className="phase-bucket-name">{phase.name}</strong>
+                <span className="phase-bucket-range">{phase.range}</span>
+                <span className="phase-bucket-sensitivity">Weather: {phase.sensitivity}</span>
+                <span className="phase-bucket-uplift">Nice day: {phase.uplift}</span>
+              </div>
+            );
+          })}
+        </div>
       </section>
 
       <section className="panel">
