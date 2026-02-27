@@ -1142,15 +1142,16 @@ export default function HomePage() {
                 </div>
                 <div className="prediction-factors">
                   <div className="factor-pill factor-season">
-                    <span className="factor-name">Organic Baseline</span>
-                    <span className="factor-value">{leadForecast.organicBaseline}</span>
+                    <span className="factor-name">{leadForecast.dmInHome ? "Baseline (Organic + DM)" : "Baseline (No DM)"}</span>
+                    <span className="factor-value">
+                      {leadForecast.seasonalBaseline}
+                      {leadForecast.dmInHome && leadForecast.dmAddon > 0 && (
+                        <span style={{ fontSize: "0.72rem", fontWeight: 400, color: "#5c7184" }}>
+                          {" "}({leadForecast.organicBaseline} + {leadForecast.dmAddon})
+                        </span>
+                      )}
+                    </span>
                   </div>
-                  {leadForecast.dmInHome && leadForecast.dmAddon > 0 && (
-                    <div className="factor-pill factor-dm">
-                      <span className="factor-name">DM In Home</span>
-                      <span className="factor-value">+{leadForecast.dmAddon} ({leadForecast.dmPct}%)</span>
-                    </div>
-                  )}
                   <div className="factor-pill factor-dow">
                     <span className="factor-name">{leadForecast.dowLabel}</span>
                     <span className="factor-value">{leadForecast.dowMultiplier}x</span>
@@ -1187,21 +1188,19 @@ export default function HomePage() {
               <h3>How This Works</h3>
               <p>Predicted from 5 years of data (48K leads, 2021-2025). Uses the actual weather forecast for the selected date from our priority markets.</p>
               <div className="math-formula">
-                <span>(Organic{dmInHome ? " + DM" : ""})</span>
+                <span>Baseline</span>
                 <span className="math-op">&times;</span>
                 <span>DOW</span>
                 <span className="math-op">&times;</span>
                 <span>Weather</span>
-                {growthPct !== 0 && (<><span className="math-op">&times;</span><span>Growth</span></>)}
                 <span className="math-op">=</span>
                 <span className="math-result">{leadForecast?.predictedLeads ?? "—"}</span>
               </div>
               {leadForecast?.inSeason && (
                 <p className="subtle" style={{ fontSize: "0.76rem" }}>
-                  ({leadForecast.organicBaseline}{leadForecast.dmInHome ? ` + ${leadForecast.dmAddon}` : ""})
+                  {leadForecast.seasonalBaseline}
                   {" "}&times; {leadForecast.dowMultiplier}
                   {" "}&times; {leadForecast.weatherMultiplier}
-                  {growthPct !== 0 ? ` × ${(1 + growthPct/100).toFixed(2)}` : ""}
                   {" "}= {leadForecast.predictedLeads}
                 </p>
               )}
