@@ -4,9 +4,11 @@ import {
   getOrFetchWeatherRange,
   shiftDays,
 } from "../../../lib/weather-cache";
+import { loadMarketsConfig } from "../../../lib/markets";
 
 const SEASON_END_MONTH_INDEX = 4;
 const SEASON_END_DAY = 10;
+const HISTORICAL_YEARS = 5;
 
 function mean(values) {
   if (!values.length) return null;
@@ -36,6 +38,88 @@ function rank(values, target, desc = true) {
   return index >= 0 ? index + 1 : null;
 }
 
+function toNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function summarizeWindow(days) {
+  const maxTemps = days.map((day) => toNumber(day.tempmax)).filter((value) => value !== null);
+  const minTemps = days.map((day) => toNumber(day.tempmin)).filter((value) => value !== null);
+  const uvs = days.map((day) => toNumber(day.uvindex)).filter((value) => value !== null);
+  const snowDepths = days
+    .map((day) => toNumber(day.snowdepth))
+    .filter((value) => value !== null);
+  const precips = days.map((day) => toNumber(day.precip)).filter((value) => value !== null);
+  const humidities = days
+    .map((day) => toNumber(day.humidity))
+    .filter((value) => value !== null);
+  const snowfall = days.map((day) => toNumber(day.snow)).filter((value) => value !== null);
+
+  return {
+    avgMaxTemp: mean(maxTemps),
+    avgMinTemp: mean(minTemps),
+    avgUv: mean(uvs),
+    avgSnowDepth: mean(snowDepths),
+    avgPrecip: mean(precips),
+    avgHumidity: mean(humidities),
+    avgSnowfall: mean(snowfall),
+    snowDays: days.filter(
+      (day) => (toNumber(day.snow) ?? 0) > 0 || (toNumber(day.snowdepth) ?? 0) > 0,
+    ).length,
+  };
+}
+
+function metricComparison(current, previous) {
+  const safeCurrent = current ?? null;
+  const safePrevious = previous ?? null;
+  const delta =
+    safeCurrent !== null && safePrevious !== null ? safeCurrent - safePrevious : null;
+  const deltaPct =
+    delta !== null && safePrevious !== 0 ? (delta / Math.abs(safePrevious)) * 100 : null;
+  return {
+    current: safeCurrent,
+    previous: safePrevious,
+    delta,
+    deltaPct,
+  };
+}
+
+function compareMetrics(current, previous) {
+  return {
+    avgMaxTemp: metricComparison(current.avgMaxTemp, previous.avgMaxTemp),
+    avgMinTemp: metricComparison(current.avgMinTemp, previous.avgMinTemp),
+    avgUv: metricComparison(current.avgUv, previous.avgUv),
+    avgSnowDepth: metricComparison(current.avgSnowDepth, previous.avgSnowDepth),
+    avgPrecip: metricComparison(current.avgPrecip, previous.avgPrecip),
+    avgHumidity: metricComparison(current.avgHumidity, previous.avgHumidity),
+    avgSnowfall: metricComparison(current.avgSnowfall, previous.avgSnowfall),
+    snowDays: metricComparison(current.snowDays, previous.snowDays),
+  };
+}
+
+function averageMetricSummaries(summaries) {
+  const keys = [
+    "avgMaxTemp",
+    "avgMinTemp",
+    "avgUv",
+    "avgSnowDepth",
+    "avgPrecip",
+    "avgHumidity",
+    "avgSnowfall",
+    "snowDays",
+  ];
+  const output = {};
+  for (const key of keys) {
+    output[key] = mean(
+      summaries
+        .map((summary) => summary?.[key])
+        .filter((value) => value !== null && value !== undefined),
+    );
+  }
+  return output;
+}
+
 export async function GET(request) {
   try {
     const apiKey = process.env.VISUAL_CROSSING_API_KEY;
@@ -51,6 +135,10 @@ export async function GET(request) {
 
     const { searchParams } = new URL(request.url);
     const location = searchParams.get("location")?.trim() || "West Chester,PA";
+    const marketsConfig = await loadMarketsConfig();
+    const configuredMarkets = Array.isArray(marketsConfig.markets) ? marketsConfig.markets : [];
+    const marketMatch = configuredMarkets.find((market) => market.name === location);
+    const weatherLocation = marketMatch?.weatherQuery || location;
     const analysisDateInput = searchParams.get("analysisDate")?.trim();
     const parsedAnalysisDate = analysisDateInput
       ? new Date(`${analysisDateInput}T00:00:00Z`)
@@ -75,7 +163,7 @@ export async function GET(request) {
     const lookbackStartISO = formatISODate(shiftDays(anchorDate, -(lookbackDays - 1)));
 
     const primaryRange = await getOrFetchWeatherRange({
-      marketName: location,
+      marketName: weatherLocation,
       startDate: lookbackStartISO,
       endDate: forecastEndISO,
       apiKey,
@@ -146,7 +234,7 @@ export async function GET(request) {
     for (let index = 0; index < sameDayDates.length; index += 1) {
       const date = sameDayDates[index];
       const data = await getOrFetchWeatherRange({
-        marketName: location,
+        marketName: weatherLocation,
         startDate: date,
         endDate: date,
         apiKey,
@@ -208,6 +296,69 @@ export async function GET(request) {
         : "Not enough humidity history.",
     };
 
+    const priorStartISO = formatISODate(shiftDays(anchorDate, -6));
+    const priorEndISO = analysisDateISO;
+    const nextStartISO = formatISODate(shiftDays(anchorDate, 1));
+    const nextEndISO = formatISODate(shiftDays(anchorDate, 7));
+
+    const priorWindowRange = await getOrFetchWeatherRange({
+      marketName: weatherLocation,
+      startDate: priorStartISO,
+      endDate: priorEndISO,
+      apiKey,
+    });
+    const nextWindowRange = await getOrFetchWeatherRange({
+      marketName: weatherLocation,
+      startDate: nextStartISO,
+      endDate: nextEndISO,
+      apiKey,
+    });
+
+    const priorHistory = [];
+    const nextHistory = [];
+    for (let yearsBack = 1; yearsBack <= HISTORICAL_YEARS; yearsBack += 1) {
+      const historicalAnchor = new Date(anchorDate);
+      historicalAnchor.setUTCFullYear(historicalAnchor.getUTCFullYear() - yearsBack);
+
+      const historicalPriorEndISO = formatISODate(historicalAnchor);
+      const historicalPriorStartISO = formatISODate(shiftDays(historicalAnchor, -6));
+      const historicalNextStartISO = formatISODate(shiftDays(historicalAnchor, 1));
+      const historicalNextEndISO = formatISODate(shiftDays(historicalAnchor, 7));
+
+      const priorHistoryRange = await getOrFetchWeatherRange({
+        marketName: weatherLocation,
+        startDate: historicalPriorStartISO,
+        endDate: historicalPriorEndISO,
+        apiKey,
+      });
+      const nextHistoryRange = await getOrFetchWeatherRange({
+        marketName: weatherLocation,
+        startDate: historicalNextStartISO,
+        endDate: historicalNextEndISO,
+        apiKey,
+      });
+      priorHistory.push(summarizeWindow(priorHistoryRange.days || []));
+      nextHistory.push(summarizeWindow(nextHistoryRange.days || []));
+    }
+
+    const priorMetrics = summarizeWindow(priorWindowRange.days || []);
+    const nextMetrics = summarizeWindow(nextWindowRange.days || []);
+    const priorBaseline = averageMetricSummaries(priorHistory);
+    const nextBaseline = averageMetricSummaries(nextHistory);
+    const rollingComparisons = {
+      comparisonLabel: "vs 5Y Avg",
+      prior7: {
+        startDate: priorStartISO,
+        endDate: priorEndISO,
+        cards: compareMetrics(priorMetrics, priorBaseline),
+      },
+      next7: {
+        startDate: nextStartISO,
+        endDate: nextEndISO,
+        cards: compareMetrics(nextMetrics, nextBaseline),
+      },
+    };
+
     return NextResponse.json({
       location: primaryRange.resolvedAddress || location,
       fetchedAt: new Date().toISOString(),
@@ -232,6 +383,7 @@ export async function GET(request) {
       lookback,
       sameDayLastYear,
       sameDayFiveYear,
+      rollingComparisons,
     });
   } catch (error) {
     return NextResponse.json(

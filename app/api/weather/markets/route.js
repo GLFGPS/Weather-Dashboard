@@ -283,8 +283,9 @@ export async function GET(request) {
 
     const rows = await mapWithConcurrency(selectedMarkets, concurrency, async (market) => {
       try {
+        const weatherLocation = market.weatherQuery || market.name;
         const current = await getOrFetchWeatherRange({
-          marketName: market.name,
+          marketName: weatherLocation,
           startDate: windowStartISO,
           endDate: analysisDateISO,
           apiKey,
@@ -300,7 +301,7 @@ export async function GET(request) {
           );
 
           const historicalRange = await getOrFetchWeatherRange({
-            marketName: market.name,
+            marketName: weatherLocation,
             startDate: historicalStartISO,
             endDate: historicalEndISO,
             apiKey,

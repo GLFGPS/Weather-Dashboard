@@ -75,6 +75,13 @@ function formatDateLabel(value) {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+function formatDayKeyLabel(dayKey) {
+  if (!dayKey) return "--";
+  const d = new Date(`2026-${dayKey}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return dayKey;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 function formatYoY(metric, digits = 1, suffix = "", label = "YoY") {
   if (!metric) {
     return { current: "--", delta: `${label}: --` };
@@ -114,8 +121,8 @@ export default function HomePage() {
   const [showAllLocations, setShowAllLocations] = useState(false);
 
   const [analysisDate, setAnalysisDate] = useState("");
-  const [trendStartDate, setTrendStartDate] = useState("");
-  const [trendEndDate, setTrendEndDate] = useState("");
+  const [trendStartDay, setTrendStartDay] = useState("");
+  const [trendEndDay, setTrendEndDay] = useState("");
   const [selectedYear, setSelectedYear] = useState(null);
   const [compareYears, setCompareYears] = useState([]);
   const [sourceFilter, setSourceFilter] = useState("All Sources");
@@ -185,14 +192,21 @@ export default function HomePage() {
 
   const selectedSeries =
     chartSeries.find((series) => series.year === selectedYear) || chartSeries[0] || null;
-  const trendWindow = selectedSeries?.seasonWindow || leadsOverview?.seasonWindow || null;
-  const rangeStart = trendStartDate || trendWindow?.start || "";
-  const rangeEnd = trendEndDate || trendWindow?.end || "";
+  const seasonDayOptions = useMemo(() => {
+    const dayKeys = new Set();
+    for (const point of selectedSeries?.points || []) {
+      if (point?.dayKey) dayKeys.add(point.dayKey);
+    }
+    return [...dayKeys].sort((a, b) => a.localeCompare(b));
+  }, [selectedSeries]);
+  const rangeStartDay = trendStartDay || seasonDayOptions[0] || "";
+  const rangeEndDay = trendEndDay || seasonDayOptions[seasonDayOptions.length - 1] || "";
 
-  function isWithinTrendRange(dateValue) {
-    if (!dateValue) return false;
-    if (rangeStart && dateValue < rangeStart) return false;
-    if (rangeEnd && dateValue > rangeEnd) return false;
+  function isWithinTrendRange(point) {
+    const dayKey = point?.dayKey || point?.date?.slice(5) || "";
+    if (!dayKey) return false;
+    if (rangeStartDay && dayKey < rangeStartDay) return false;
+    if (rangeEndDay && dayKey > rangeEndDay) return false;
     return true;
   }
 
@@ -200,9 +214,9 @@ export default function HomePage() {
     () =>
       displaySeries.map((series) => ({
         ...series,
-        points: (series.points || []).filter((point) => isWithinTrendRange(point.date)),
+        points: (series.points || []).filter((point) => isWithinTrendRange(point)),
       })),
-    [displaySeries, rangeStart, rangeEnd],
+    [displaySeries, rangeStartDay, rangeEndDay],
   );
 
   const tableSeries =
@@ -211,8 +225,8 @@ export default function HomePage() {
     chartSeries[0] ||
     null;
   const tablePoints = useMemo(
-    () => (tableSeries?.points || []).filter((point) => isWithinTrendRange(point.date)),
-    [tableSeries, rangeStart, rangeEnd],
+    () => (tableSeries?.points || []).filter((point) => isWithinTrendRange(point)),
+    [tableSeries, rangeStartDay, rangeEndDay],
   );
   const sharedLeadAxisMax = useMemo(() => {
     const maxLead = displaySeriesFiltered.reduce((runningMax, series) => {
@@ -515,20 +529,20 @@ export default function HomePage() {
   }, [availableYears, tableYear, selectedYear]);
 
   useEffect(() => {
-    if (!trendWindow?.start || !trendWindow?.end) return;
-    setTrendStartDate((prev) => {
-      if (!prev || prev < trendWindow.start || prev > trendWindow.end) {
-        return trendWindow.start;
+    if (!seasonDayOptions.length) return;
+    setTrendStartDay((prev) => {
+      if (!prev || !seasonDayOptions.includes(prev)) {
+        return seasonDayOptions[0];
       }
       return prev;
     });
-    setTrendEndDate((prev) => {
-      if (!prev || prev > trendWindow.end || prev < trendWindow.start) {
-        return trendWindow.end;
+    setTrendEndDay((prev) => {
+      if (!prev || !seasonDayOptions.includes(prev)) {
+        return seasonDayOptions[seasonDayOptions.length - 1];
       }
       return prev;
     });
-  }, [trendWindow?.start, trendWindow?.end, selectedYear]);
+  }, [seasonDayOptions, selectedYear]);
 
   useEffect(() => {
     if (!displaySeriesFiltered.length) return;
@@ -568,16 +582,16 @@ export default function HomePage() {
   }
 
   function handleTrendStartChange(value) {
-    setTrendStartDate(value);
-    if (trendEndDate && value > trendEndDate) {
-      setTrendEndDate(value);
+    setTrendStartDay(value);
+    if (rangeEndDay && value > rangeEndDay) {
+      setTrendEndDay(value);
     }
   }
 
   function handleTrendEndChange(value) {
-    setTrendEndDate(value);
-    if (trendStartDate && value < trendStartDate) {
-      setTrendStartDate(value);
+    setTrendEndDay(value);
+    if (rangeStartDay && value < rangeStartDay) {
+      setTrendStartDay(value);
     }
   }
 
@@ -602,6 +616,10 @@ export default function HomePage() {
   const weatherComparisonLabel =
     selectedRadarMarket?.comparisonLabel || marketWeather?.overview?.comparisonLabel || "vs 5Y Avg";
   const metricCard4 = yoyCards[fourthMetric.key] || null;
+  const rollingComparison = selectedWeather?.rollingComparisons || null;
+  const rollingComparisonLabel = rollingComparison?.comparisonLabel || "vs 5Y Avg";
+  const prior7Cards = rollingComparison?.prior7?.cards || null;
+  const next7Cards = rollingComparison?.next7?.cards || null;
   const toggleSeries =
     displaySeriesFiltered.find((series) => series.year === Number(toggleYear)) ||
     displaySeriesFiltered[0] ||
@@ -777,6 +795,117 @@ export default function HomePage() {
             ).delta}
           </p>
         </article>
+      </section>
+
+      <section className="panel">
+        <div className="trend-header">
+          <h2>7-Day Actual + 7-Day Forecast ({rollingComparisonLabel})</h2>
+        </div>
+        <div className="split-kpi-sections">
+          <div>
+            <h3 className="subsection-title">Prior 7 Days</h3>
+            <div className="kpi-grid compact-kpi-grid">
+              <article className="kpi-card">
+                <h3>Avg Max Temp</h3>
+                <p className="kpi-value">
+                  {formatYoY(prior7Cards?.avgMaxTemp, 1, "°F", rollingComparisonLabel).current}
+                </p>
+                <p className="kpi-delta">
+                  {formatYoY(prior7Cards?.avgMaxTemp, 1, "°F", rollingComparisonLabel).delta}
+                </p>
+              </article>
+              <article className="kpi-card">
+                <h3>Avg Min Temp</h3>
+                <p className="kpi-value">
+                  {formatYoY(prior7Cards?.avgMinTemp, 1, "°F", rollingComparisonLabel).current}
+                </p>
+                <p className="kpi-delta">
+                  {formatYoY(prior7Cards?.avgMinTemp, 1, "°F", rollingComparisonLabel).delta}
+                </p>
+              </article>
+              <article className="kpi-card">
+                <h3>Avg UV</h3>
+                <p className="kpi-value">
+                  {formatYoY(prior7Cards?.avgUv, 1, "", rollingComparisonLabel).current}
+                </p>
+                <p className="kpi-delta">
+                  {formatYoY(prior7Cards?.avgUv, 1, "", rollingComparisonLabel).delta}
+                </p>
+              </article>
+              <article className="kpi-card">
+                <h3>{fourthMetric.label}</h3>
+                <p className="kpi-value">
+                  {formatYoY(
+                    prior7Cards?.[fourthMetric.key],
+                    fourthMetric.digits,
+                    ` ${fourthMetric.unit}`,
+                    rollingComparisonLabel,
+                  ).current}
+                </p>
+                <p className="kpi-delta">
+                  {formatYoY(
+                    prior7Cards?.[fourthMetric.key],
+                    fourthMetric.digits,
+                    ` ${fourthMetric.unit}`,
+                    rollingComparisonLabel,
+                  ).delta}
+                </p>
+              </article>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="subsection-title">Next 7 Days Forecast</h3>
+            <div className="kpi-grid compact-kpi-grid">
+              <article className="kpi-card">
+                <h3>Avg Max Temp</h3>
+                <p className="kpi-value">
+                  {formatYoY(next7Cards?.avgMaxTemp, 1, "°F", rollingComparisonLabel).current}
+                </p>
+                <p className="kpi-delta">
+                  {formatYoY(next7Cards?.avgMaxTemp, 1, "°F", rollingComparisonLabel).delta}
+                </p>
+              </article>
+              <article className="kpi-card">
+                <h3>Avg Min Temp</h3>
+                <p className="kpi-value">
+                  {formatYoY(next7Cards?.avgMinTemp, 1, "°F", rollingComparisonLabel).current}
+                </p>
+                <p className="kpi-delta">
+                  {formatYoY(next7Cards?.avgMinTemp, 1, "°F", rollingComparisonLabel).delta}
+                </p>
+              </article>
+              <article className="kpi-card">
+                <h3>Avg UV</h3>
+                <p className="kpi-value">
+                  {formatYoY(next7Cards?.avgUv, 1, "", rollingComparisonLabel).current}
+                </p>
+                <p className="kpi-delta">
+                  {formatYoY(next7Cards?.avgUv, 1, "", rollingComparisonLabel).delta}
+                </p>
+              </article>
+              <article className="kpi-card">
+                <h3>{fourthMetric.label}</h3>
+                <p className="kpi-value">
+                  {formatYoY(
+                    next7Cards?.[fourthMetric.key],
+                    fourthMetric.digits,
+                    ` ${fourthMetric.unit}`,
+                    rollingComparisonLabel,
+                  ).current}
+                </p>
+                <p className="kpi-delta">
+                  {formatYoY(
+                    next7Cards?.[fourthMetric.key],
+                    fourthMetric.digits,
+                    ` ${fourthMetric.unit}`,
+                    rollingComparisonLabel,
+                  ).delta}
+                </p>
+              </article>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section className="panel">
@@ -1010,27 +1139,33 @@ export default function HomePage() {
             </label>
 
             <label>
-              Start Date
-              <input
-                type="date"
-                value={trendStartDate}
-                min={trendWindow?.start || undefined}
-                max={trendEndDate || trendWindow?.end || undefined}
+              Start Day
+              <select
+                value={rangeStartDay}
                 onChange={(event) => handleTrendStartChange(event.target.value)}
-                disabled={!trendWindow?.start}
-              />
+                disabled={!seasonDayOptions.length}
+              >
+                {seasonDayOptions.map((dayKey) => (
+                  <option key={dayKey} value={dayKey}>
+                    {formatDayKeyLabel(dayKey)}
+                  </option>
+                ))}
+              </select>
             </label>
 
             <label>
-              End Date
-              <input
-                type="date"
-                value={trendEndDate}
-                min={trendStartDate || trendWindow?.start || undefined}
-                max={trendWindow?.end || undefined}
+              End Day
+              <select
+                value={rangeEndDay}
                 onChange={(event) => handleTrendEndChange(event.target.value)}
-                disabled={!trendWindow?.end}
-              />
+                disabled={!seasonDayOptions.length}
+              >
+                {seasonDayOptions.map((dayKey) => (
+                  <option key={dayKey} value={dayKey}>
+                    {formatDayKeyLabel(dayKey)}
+                  </option>
+                ))}
+              </select>
             </label>
 
             {chartMode === "toggle" && (
@@ -1374,27 +1509,33 @@ export default function HomePage() {
             </label>
 
             <label>
-              Start Date
-              <input
-                type="date"
-                value={trendStartDate}
-                min={trendWindow?.start || undefined}
-                max={trendEndDate || trendWindow?.end || undefined}
+              Start Day
+              <select
+                value={rangeStartDay}
                 onChange={(event) => handleTrendStartChange(event.target.value)}
-                disabled={!trendWindow?.start}
-              />
+                disabled={!seasonDayOptions.length}
+              >
+                {seasonDayOptions.map((dayKey) => (
+                  <option key={dayKey} value={dayKey}>
+                    {formatDayKeyLabel(dayKey)}
+                  </option>
+                ))}
+              </select>
             </label>
 
             <label>
-              End Date
-              <input
-                type="date"
-                value={trendEndDate}
-                min={trendStartDate || trendWindow?.start || undefined}
-                max={trendWindow?.end || undefined}
+              End Day
+              <select
+                value={rangeEndDay}
                 onChange={(event) => handleTrendEndChange(event.target.value)}
-                disabled={!trendWindow?.end}
-              />
+                disabled={!seasonDayOptions.length}
+              >
+                {seasonDayOptions.map((dayKey) => (
+                  <option key={dayKey} value={dayKey}>
+                    {formatDayKeyLabel(dayKey)}
+                  </option>
+                ))}
+              </select>
             </label>
           </div>
         </div>

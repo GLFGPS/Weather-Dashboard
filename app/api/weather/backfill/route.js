@@ -164,6 +164,7 @@ export async function POST(request) {
         tasks.push({
           type: "season",
           marketName: market.name,
+          weatherLocation: market.weatherQuery || market.name,
           year: window.year,
           startDate: window.startDate,
           endDate: window.endDate,
@@ -177,6 +178,7 @@ export async function POST(request) {
         tasks.push({
           type: "forecast",
           marketName: market.name,
+          weatherLocation: market.weatherQuery || market.name,
           year: today.getUTCFullYear(),
           startDate: todayISO,
           endDate: forecastEndDate,
@@ -188,7 +190,7 @@ export async function POST(request) {
     const taskResults = await mapWithConcurrency(tasks, concurrency, async (task) => {
       try {
         const response = await getOrFetchWeatherRange({
-          marketName: task.marketName,
+          marketName: task.weatherLocation,
           startDate: task.startDate,
           endDate: task.endDate,
           apiKey,

@@ -108,8 +108,9 @@ export async function GET(request) {
 
     const rows = await mapWithConcurrency(priorityMarkets, 1, async (market) => {
       try {
+        const weatherLocation = market.weatherQuery || market.name;
         const response = await getOrFetchWeatherRange({
-          marketName: market.name,
+          marketName: weatherLocation,
           startDate: startISO,
           endDate: endISO,
           apiKey,

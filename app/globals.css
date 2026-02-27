@@ -171,6 +171,21 @@ button:disabled {
   margin-bottom: 14px;
 }
 
+.compact-kpi-grid {
+  margin-bottom: 0;
+}
+
+.split-kpi-sections {
+  display: grid;
+  gap: 14px;
+}
+
+.subsection-title {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+  color: #2e4b64;
+}
+
 .kpi-card {
   border: 1px solid #d8e2eb;
   border-radius: 12px;
