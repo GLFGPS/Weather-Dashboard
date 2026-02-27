@@ -797,7 +797,7 @@ export default function HomePage() {
 
           <div className="dashboard-summary">
             <p><strong>What the data is.</strong> Lead and weather data from 2021-2026 lawn seasons (Feb 15 - May 10) across all markets in PA, NJ, and DE. The forecast is up to 15 days, updating daily.</p>
-            <p><strong>Adjusting for your scenario.</strong> Use the Growth slider to account for YoY volume changes, and the date picker to forecast any day in the next 15 days. Weather, day of week, and seasonality adjust automatically.</p>
+            <p><strong>Adjusting for your scenario.</strong> The Actual + 7 Day Forecast is for the Selected Market. The forecast blend below it is a blend of 4 markets with an option to view each one individually.</p>
             <p><strong>What the lead forecast does.</strong> The Lead Forecast uses 5 years of historical leads + real-time weather forecasts to project daily lead volume. Toggle DM In Home to adjust projection for when direct mail is dropping.</p>
           </div>
         </article>
