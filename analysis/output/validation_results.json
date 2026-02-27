@@ -1,0 +1,97 @@
+{
+  "holdout_test": {
+    "train_years": [
+      2021,
+      2022,
+      2023,
+      2024
+    ],
+    "test_year": 2025,
+    "mae": 50.4,
+    "r2": 0.473,
+    "mape": 44.3,
+    "total_actual": 12478,
+    "total_predicted": 9843,
+    "season_total_error_pct": -21.1
+  },
+  "weekly_accuracy": [
+    {
+      "week_num": 7,
+      "actual_total": 14,
+      "predicted_total": 20.934528565889444,
+      "weekly_error_pct": 49.53234689921031
+    },
+    {
+      "week_num": 8,
+      "actual_total": 409,
+      "predicted_total": 227.7363351835574,
+      "weekly_error_pct": -44.31874445389795
+    },
+    {
+      "week_num": 9,
+      "actual_total": 681,
+      "predicted_total": 562.7288897974839,
+      "weekly_error_pct": -17.367270220633777
+    },
+    {
+      "week_num": 10,
+      "actual_total": 975,
+      "predicted_total": 605.9339491759412,
+      "weekly_error_pct": -37.85292828964706
+    },
+    {
+      "week_num": 11,
+      "actual_total": 1442,
+      "predicted_total": 953.2200106733335,
+      "weekly_error_pct": -33.89597706842348
+    },
+    {
+      "week_num": 12,
+      "actual_total": 1673,
+      "predicted_total": 1223.6525654821908,
+      "weekly_error_pct": -26.858782696820636
+    },
+    {
+      "week_num": 13,
+      "actual_total": 1439,
+      "predicted_total": 1196.540347795972,
+      "weekly_error_pct": -16.84917666463016
+    },
+    {
+      "week_num": 14,
+      "actual_total": 864,
+      "predicted_total": 1224.6092603401262,
+      "weekly_error_pct": 41.73718290973682
+    },
+    {
+      "week_num": 15,
+      "actual_total": 1215,
+      "predicted_total": 998.7709769251348,
+      "weekly_error_pct": -17.796627413569144
+    },
+    {
+      "week_num": 16,
+      "actual_total": 1172,
+      "predicted_total": 1128.2778704392472,
+      "weekly_error_pct": -3.7305571297570617
+    },
+    {
+      "week_num": 17,
+      "actual_total": 1272,
+      "predicted_total": 796.3091991831495,
+      "weekly_error_pct": -37.39707553591592
+    },
+    {
+      "week_num": 18,
+      "actual_total": 963,
+      "predicted_total": 547.0832888073143,
+      "weekly_error_pct": -43.18968963579292
+    },
+    {
+      "week_num": 19,
+      "actual_total": 359,
+      "predicted_total": 356.75703212971797,
+      "weekly_error_pct": -0.6247821365688133
+    }
+  ]
+}
