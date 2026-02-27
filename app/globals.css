@@ -218,6 +218,17 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+.forecast-controls {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.forecast-controls label {
+  min-width: 220px;
+}
+
 .forecast-window-toggle button {
   background: #eef4fb;
   color: #2f4960;
@@ -443,6 +454,14 @@ th {
 
   .trend-controls {
     width: 100%;
+  }
+
+  .forecast-controls {
+    width: 100%;
+  }
+
+  .forecast-controls label {
+    min-width: 100%;
   }
 
   .table-header-row {

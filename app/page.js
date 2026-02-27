@@ -137,6 +137,7 @@ export default function HomePage() {
   const [priorityForecastError, setPriorityForecastError] = useState("");
 
   const [forecastWindowDays, setForecastWindowDays] = useState(15);
+  const [forecastScope, setForecastScope] = useState("blend");
   const [priorityForecast, setPriorityForecast] = useState(null);
 
   const [question, setQuestion] = useState("");
@@ -231,7 +232,27 @@ export default function HomePage() {
     [lagEffect, lagMetric],
   );
   const lagBest = lagEffect?.bestByMetric?.[lagMetric] || null;
-  const forecastPoints = priorityForecast?.forecast || [];
+  const forecastMarketOptions = useMemo(() => {
+    const options = [{ value: "blend", label: "Priority Blend (4 Markets)" }];
+    for (const row of priorityForecast?.marketForecasts || []) {
+      options.push({
+        value: row.marketName,
+        label: row.marketLabel || row.marketName,
+      });
+    }
+    return options;
+  }, [priorityForecast]);
+  const selectedForecastMarket =
+    (priorityForecast?.marketForecasts || []).find((row) => row.marketName === forecastScope) ||
+    null;
+  const forecastPoints =
+    forecastScope === "blend"
+      ? priorityForecast?.forecast || []
+      : selectedForecastMarket?.forecast || [];
+  const forecastScopeLabel =
+    forecastScope === "blend"
+      ? "Averaged across West Chester, North Wales, Hillsborough, and Lindenwold."
+      : `Showing ${selectedForecastMarket?.marketLabel || selectedForecastMarket?.marketName || "selected market"} only.`;
   const forecastSummary = useMemo(() => {
     if (!forecastPoints.length) {
       return {
@@ -262,6 +283,12 @@ export default function HomePage() {
       avgSnowDepth: avg(values.snowDepth),
     };
   }, [forecastPoints]);
+
+  useEffect(() => {
+    if (!forecastMarketOptions.some((option) => option.value === forecastScope)) {
+      setForecastScope("blend");
+    }
+  }, [forecastMarketOptions, forecastScope]);
 
   useEffect(() => {
     if (!locationOptions.length) return;
@@ -676,21 +703,36 @@ export default function HomePage() {
       <section className="panel">
         <div className="trend-header">
           <h2>Priority Market Forecast Blend</h2>
-          <div className="forecast-window-toggle">
-            {[3, 7, 15].map((days) => (
-              <button
-                key={days}
-                type="button"
-                className={forecastWindowDays === days ? "active" : ""}
-                onClick={() => setForecastWindowDays(days)}
+          <div className="forecast-controls">
+            <label>
+              Forecast View
+              <select
+                value={forecastScope}
+                onChange={(event) => setForecastScope(event.target.value)}
               >
-                {days} Day
-              </button>
-            ))}
+                {forecastMarketOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="forecast-window-toggle">
+              {[3, 7, 15].map((days) => (
+                <button
+                  key={days}
+                  type="button"
+                  className={forecastWindowDays === days ? "active" : ""}
+                  onClick={() => setForecastWindowDays(days)}
+                >
+                  {days} Day
+                </button>
+              ))}
+            </div>
           </div>
         </div>
         <p className="subtle">
-          Forecast is averaged across West Chester, North Wales, Hillsborough, and Lindenwold.
+          {forecastScopeLabel}
         </p>
         {loadingPriorityForecast ? (
           <p>Loading blended forecast...</p>

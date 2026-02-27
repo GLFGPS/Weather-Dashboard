@@ -63,6 +63,18 @@ function formatDayLabel(isoDate) {
   });
 }
 
+function pointFromAggregateEntry(date, entry) {
+  return {
+    date,
+    dayLabel: formatDayLabel(date),
+    avgTempMax: entry?.tempMaxCount ? entry.tempMaxSum / entry.tempMaxCount : null,
+    avgTempMin: entry?.tempMinCount ? entry.tempMinSum / entry.tempMinCount : null,
+    avgUv: entry?.uvCount ? entry.uvSum / entry.uvCount : null,
+    avgPrecipProb: entry?.precipProbCount ? entry.precipProbSum / entry.precipProbCount : null,
+    avgSnowDepth: entry?.snowDepthCount ? entry.snowDepthSum / entry.snowDepthCount : null,
+  };
+}
+
 export async function GET(request) {
   try {
     const apiKey = process.env.VISUAL_CROSSING_API_KEY;
@@ -105,6 +117,7 @@ export async function GET(request) {
         return {
           ok: true,
           marketName: market.name,
+          marketLabel: market.label || market.name,
           storage: response.storage,
           days: response.days || [],
         };
@@ -112,6 +125,7 @@ export async function GET(request) {
         return {
           ok: false,
           marketName: market.name,
+          marketLabel: market.label || market.name,
           error: error.message || "Forecast fetch failed.",
         };
       }
@@ -136,7 +150,9 @@ export async function GET(request) {
     }
 
     const aggregate = new Map();
+    const byMarket = new Map();
     for (const row of successfulRows) {
+      const marketMap = new Map();
       for (const day of row.days || []) {
         const entry = aggregate.get(day.datetime) || {
           tempMaxSum: 0,
@@ -179,25 +195,47 @@ export async function GET(request) {
         }
 
         aggregate.set(day.datetime, entry);
+        marketMap.set(day.datetime, {
+          tempMax: tempMax,
+          tempMin: tempMin,
+          uv: uv,
+          precipProb: precipProb,
+          snowDepth: snowDepth,
+        });
       }
+      byMarket.set(row.marketName, marketMap);
     }
 
     const forecast = [];
     for (let offset = 0; offset < days; offset += 1) {
       const date = formatISODate(shiftDays(today, offset));
       const entry = aggregate.get(date) || null;
-      forecast.push({
-        date,
-        dayLabel: formatDayLabel(date),
-        avgTempMax: entry?.tempMaxCount ? entry.tempMaxSum / entry.tempMaxCount : null,
-        avgTempMin: entry?.tempMinCount ? entry.tempMinSum / entry.tempMinCount : null,
-        avgUv: entry?.uvCount ? entry.uvSum / entry.uvCount : null,
-        avgPrecipProb: entry?.precipProbCount
-          ? entry.precipProbSum / entry.precipProbCount
-          : null,
-        avgSnowDepth: entry?.snowDepthCount ? entry.snowDepthSum / entry.snowDepthCount : null,
-      });
+      forecast.push(pointFromAggregateEntry(date, entry));
     }
+
+    const marketForecasts = successfulRows.map((row) => {
+      const marketMap = byMarket.get(row.marketName) || new Map();
+      const points = [];
+      for (let offset = 0; offset < days; offset += 1) {
+        const date = formatISODate(shiftDays(today, offset));
+        const entry = marketMap.get(date) || null;
+        points.push({
+          date,
+          dayLabel: formatDayLabel(date),
+          avgTempMax: entry?.tempMax ?? null,
+          avgTempMin: entry?.tempMin ?? null,
+          avgUv: entry?.uv ?? null,
+          avgPrecipProb: entry?.precipProb ?? null,
+          avgSnowDepth: entry?.snowDepth ?? null,
+        });
+      }
+      return {
+        marketName: row.marketName,
+        marketLabel: row.marketLabel,
+        storage: row.storage,
+        forecast: points,
+      };
+    });
 
     const storageModes = [...new Set(successfulRows.map((row) => row.storage))];
 
@@ -206,9 +244,13 @@ export async function GET(request) {
       days,
       startDate: startISO,
       endDate: endISO,
-      priorityMarkets: priorityMarkets.map((market) => market.name),
+      priorityMarkets: priorityMarkets.map((market) => ({
+        name: market.name,
+        label: market.label || market.name,
+      })),
       storageModes,
       forecast,
+      marketForecasts,
       errors,
     });
   } catch (error) {
