@@ -2,13 +2,11 @@
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import {
-  Area,
   Bar,
   CartesianGrid,
   ComposedChart,
   Legend,
   Line,
-  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -42,6 +40,15 @@ const WEATHER_LINE_OPTIONS = [
   { key: "avgSnowDepth", label: "Avg Snow Depth" },
 ];
 
+const LAG_METRIC_OPTIONS = [
+  { key: "avgTempMax", label: "Avg Temp Max" },
+  { key: "avgUv", label: "Avg UV" },
+  { key: "avgSnowDepth", label: "Avg Snow Depth" },
+];
+
+const TREND_DAY_RANGE_START = "02-15";
+const TREND_DAY_RANGE_END = "05-10";
+
 const CHART_COLORS = ["#118257", "#1f4f86", "#8a5cf5", "#f08a24", "#da3f5f", "#0f766e"];
 
 function formatNumber(value, digits = 0) {
@@ -52,6 +59,11 @@ function formatNumber(value, digits = 0) {
 function formatTemp(value, digits = 0) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return "--";
   return `${Number(value).toFixed(digits)}°F`;
+}
+
+function formatPercent(value, digits = 1) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "--";
+  return `${Number(value).toFixed(digits)}%`;
 }
 
 function marketLabel(market) {
@@ -66,9 +78,28 @@ function formatDateLabel(value) {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-function formatYoY(metric, digits = 1, suffix = "") {
+function formatDayKeyLabel(dayKey) {
+  if (!dayKey) return "--";
+  const d = new Date(`2026-${dayKey}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return dayKey;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function buildSeasonDayOptions(startDay, endDay) {
+  const start = new Date(`2024-${startDay}T00:00:00Z`);
+  const end = new Date(`2024-${endDay}T00:00:00Z`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) return [];
+
+  const options = [];
+  for (let cursor = new Date(start); cursor <= end; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+    options.push(cursor.toISOString().slice(5, 10));
+  }
+  return options;
+}
+
+function formatYoY(metric, digits = 1, suffix = "", label = "YoY") {
   if (!metric) {
-    return { current: "--", delta: "YoY: --" };
+    return { current: "--", delta: `${label}: --` };
   }
 
   const current =
@@ -82,8 +113,12 @@ function formatYoY(metric, digits = 1, suffix = "") {
 
   return {
     current,
-    delta: `YoY: ${delta}`,
+    delta: `${label}: ${delta}`,
   };
+}
+
+function compactDelta(metric, digits = 1, suffix = "", label = "YoY") {
+  return formatYoY(metric, digits, suffix, label).delta.replace(/^[^:]+:\s*/, "");
 }
 
 function chartColor(index) {
@@ -101,6 +136,8 @@ export default function HomePage() {
   const [showAllLocations, setShowAllLocations] = useState(false);
 
   const [analysisDate, setAnalysisDate] = useState("");
+  const [trendStartDay, setTrendStartDay] = useState("");
+  const [trendEndDay, setTrendEndDay] = useState("");
   const [selectedYear, setSelectedYear] = useState(null);
   const [compareYears, setCompareYears] = useState([]);
   const [sourceFilter, setSourceFilter] = useState("All Sources");
@@ -108,6 +145,7 @@ export default function HomePage() {
   const [toggleYear, setToggleYear] = useState(null);
   const [tableYear, setTableYear] = useState(null);
   const [weatherLineMetric, setWeatherLineMetric] = useState("avgTempMax");
+  const [lagMetric, setLagMetric] = useState("avgTempMax");
   const [fourthMetricKey, setFourthMetricKey] = useState("avgSnowDepth");
 
   const [marketWeather, setMarketWeather] = useState(null);
@@ -118,11 +156,17 @@ export default function HomePage() {
   const [loadingMarketWeather, setLoadingMarketWeather] = useState(true);
   const [loadingSelectedWeather, setLoadingSelectedWeather] = useState(true);
   const [loadingLeads, setLoadingLeads] = useState(true);
+  const [loadingPriorityForecast, setLoadingPriorityForecast] = useState(true);
 
   const [marketsError, setMarketsError] = useState("");
   const [weatherError, setWeatherError] = useState("");
   const [selectedWeatherError, setSelectedWeatherError] = useState("");
   const [leadsError, setLeadsError] = useState("");
+  const [priorityForecastError, setPriorityForecastError] = useState("");
+
+  const [forecastWindowDays, setForecastWindowDays] = useState(15);
+  const [forecastScope, setForecastScope] = useState("blend");
+  const [priorityForecast, setPriorityForecast] = useState(null);
 
   const [question, setQuestion] = useState("");
   const [chatAnswer, setChatAnswer] = useState("");
@@ -130,9 +174,9 @@ export default function HomePage() {
   const [chatLoading, setChatLoading] = useState(false);
 
   const [growthPct, setGrowthPct] = useState(0);
-  const [forecast, setForecast] = useState(null);
+  const [leadForecast, setLeadForecast] = useState(null);
   const [seasonalCurve, setSeasonalCurve] = useState(null);
-  const [loadingForecast, setLoadingForecast] = useState(true);
+  const [loadingLeadForecast, setLoadingLeadForecast] = useState(true);
 
   const fourthMetric = useMemo(
     () =>
@@ -168,13 +212,41 @@ export default function HomePage() {
 
   const selectedSeries =
     chartSeries.find((series) => series.year === selectedYear) || chartSeries[0] || null;
+  const seasonDayOptions = useMemo(
+    () => buildSeasonDayOptions(TREND_DAY_RANGE_START, TREND_DAY_RANGE_END),
+    [],
+  );
+  const rangeStartDay = trendStartDay || seasonDayOptions[0] || "";
+  const rangeEndDay = trendEndDay || seasonDayOptions[seasonDayOptions.length - 1] || "";
+
+  function isWithinTrendRange(point) {
+    const dayKey = point?.dayKey || point?.date?.slice(5) || "";
+    if (!dayKey) return false;
+    if (rangeStartDay && dayKey < rangeStartDay) return false;
+    if (rangeEndDay && dayKey > rangeEndDay) return false;
+    return true;
+  }
+
+  const displaySeriesFiltered = useMemo(
+    () =>
+      displaySeries.map((series) => ({
+        ...series,
+        points: (series.points || []).filter((point) => isWithinTrendRange(point)),
+      })),
+    [displaySeries, rangeStartDay, rangeEndDay],
+  );
+
   const tableSeries =
     chartSeries.find((series) => series.year === tableYear) ||
     selectedSeries ||
     chartSeries[0] ||
     null;
+  const tablePoints = useMemo(
+    () => (tableSeries?.points || []).filter((point) => isWithinTrendRange(point)),
+    [tableSeries, rangeStartDay, rangeEndDay],
+  );
   const sharedLeadAxisMax = useMemo(() => {
-    const maxLead = displaySeries.reduce((runningMax, series) => {
+    const maxLead = displaySeriesFiltered.reduce((runningMax, series) => {
       const seriesMax = Math.max(
         ...(series.points || []).map((point) => {
           const leads = Number(point.filteredLeads);
@@ -185,12 +257,96 @@ export default function HomePage() {
       return Math.max(runningMax, seriesMax);
     }, 0);
     return Math.max(50, nextFiftyAbove(maxLead));
-  }, [displaySeries]);
+  }, [displaySeriesFiltered]);
 
-  const maxDailyLead = Math.max(
-    ...(tableSeries?.points || []).map((row) => row.filteredLeads),
-    0,
+  const maxDailyLead = Math.max(...tablePoints.map((row) => row.filteredLeads), 0);
+  const insights = leadsOverview?.insights || {};
+  const conditionMatrix = insights.conditionMatrix || [];
+  const lagEffect = insights.lagEffect || { lags: [], bestByMetric: {} };
+  const goalTracking = insights.goalTracking || null;
+
+  const goalTrackingData = goalTracking?.points || [];
+  const goalAxisMax = useMemo(() => {
+    const highest = Math.max(
+      ...goalTrackingData.map((point) =>
+        Math.max(
+          Number(point.actualLeads) || 0,
+          Number(point.expectedLeads) || 0,
+          Number(point.upperBand) || 0,
+        ),
+      ),
+      0,
+    );
+    return Math.max(50, nextFiftyAbove(highest));
+  }, [goalTrackingData]);
+
+  const lagChartData = useMemo(
+    () =>
+      (lagEffect?.lags || []).map((row) => ({
+        lag: row.lag,
+        correlation: row?.[lagMetric]?.correlation ?? null,
+        sampleSize: row?.[lagMetric]?.sampleSize ?? 0,
+      })),
+    [lagEffect, lagMetric],
   );
+  const lagBest = lagEffect?.bestByMetric?.[lagMetric] || null;
+  const forecastMarketOptions = useMemo(() => {
+    const options = [{ value: "blend", label: "Priority Blend (4 Markets)" }];
+    for (const row of priorityForecast?.marketForecasts || []) {
+      options.push({
+        value: row.marketName,
+        label: row.marketLabel || row.marketName,
+      });
+    }
+    return options;
+  }, [priorityForecast]);
+  const selectedForecastMarket =
+    (priorityForecast?.marketForecasts || []).find((row) => row.marketName === forecastScope) ||
+    null;
+  const forecastPoints =
+    forecastScope === "blend"
+      ? priorityForecast?.forecast || []
+      : selectedForecastMarket?.forecast || [];
+  const forecastScopeLabel =
+    forecastScope === "blend"
+      ? "Averaged across West Chester, North Wales, Hillsborough, and Lindenwold."
+      : `Showing ${selectedForecastMarket?.marketLabel || selectedForecastMarket?.marketName || "selected market"} only.`;
+  const forecastSummary = useMemo(() => {
+    if (!forecastPoints.length) {
+      return {
+        avgMax: null,
+        avgMin: null,
+        avgPrecipProb: null,
+        avgSnowDepth: null,
+      };
+    }
+    const values = forecastPoints.reduce(
+      (acc, point) => {
+        if (Number.isFinite(Number(point.avgTempMax))) acc.max.push(Number(point.avgTempMax));
+        if (Number.isFinite(Number(point.avgTempMin))) acc.min.push(Number(point.avgTempMin));
+        if (Number.isFinite(Number(point.avgPrecipProb)))
+          acc.precipProb.push(Number(point.avgPrecipProb));
+        if (Number.isFinite(Number(point.avgSnowDepth)))
+          acc.snowDepth.push(Number(point.avgSnowDepth));
+        return acc;
+      },
+      { max: [], min: [], precipProb: [], snowDepth: [] },
+    );
+    const avg = (input) =>
+      input.length ? input.reduce((sum, value) => sum + value, 0) / input.length : null;
+    return {
+      avgMax: avg(values.max),
+      avgMin: avg(values.min),
+      avgPrecipProb: avg(values.precipProb),
+      avgSnowDepth: avg(values.snowDepth),
+    };
+  }, [forecastPoints]);
+
+  useEffect(() => {
+    if (!forecastMarketOptions.some((option) => option.value === forecastScope)) {
+      setForecastScope("blend");
+    }
+  }, [forecastMarketOptions, forecastScope]);
 
   useEffect(() => {
     if (!locationOptions.length) return;
@@ -311,6 +467,36 @@ export default function HomePage() {
   }, [analysisDate, showAllLocations, selectedMarket]);
 
   useEffect(() => {
+    let active = true;
+    async function loadPriorityForecast() {
+      setLoadingPriorityForecast(true);
+      setPriorityForecastError("");
+      try {
+        const params = new URLSearchParams({
+          days: String(forecastWindowDays),
+        });
+        const response = await fetch(`/api/weather/priority-forecast?${params.toString()}`, {
+          cache: "no-store",
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error || "Unable to load blended forecast.");
+        }
+        if (active) setPriorityForecast(payload);
+      } catch (error) {
+        if (active) setPriorityForecastError(error.message);
+      } finally {
+        if (active) setLoadingPriorityForecast(false);
+      }
+    }
+
+    loadPriorityForecast();
+    return () => {
+      active = false;
+    };
+  }, [forecastWindowDays]);
+
+  useEffect(() => {
     if (!analysisDate || !selectedMarket) return;
     let active = true;
     async function loadSelectedWeather() {
@@ -360,11 +546,27 @@ export default function HomePage() {
   }, [availableYears, tableYear, selectedYear]);
 
   useEffect(() => {
-    if (!displaySeries.length) return;
-    if (!toggleYear || !displaySeries.some((series) => series.year === toggleYear)) {
-      setToggleYear(displaySeries[0].year);
+    if (!seasonDayOptions.length) return;
+    setTrendStartDay((prev) => {
+      if (!prev || !seasonDayOptions.includes(prev)) {
+        return seasonDayOptions[0];
+      }
+      return prev;
+    });
+    setTrendEndDay((prev) => {
+      if (!prev || !seasonDayOptions.includes(prev)) {
+        return seasonDayOptions[seasonDayOptions.length - 1];
+      }
+      return prev;
+    });
+  }, [seasonDayOptions, selectedYear]);
+
+  useEffect(() => {
+    if (!displaySeriesFiltered.length) return;
+    if (!toggleYear || !displaySeriesFiltered.some((series) => series.year === toggleYear)) {
+      setToggleYear(displaySeriesFiltered[0].year);
     }
-  }, [displaySeries, toggleYear]);
+  }, [displaySeriesFiltered, toggleYear]);
 
   async function askCopilot(event) {
     event.preventDefault();
@@ -396,16 +598,14 @@ export default function HomePage() {
     }
   }
 
-  // Fetch forecast for analysis date and seasonal baseline curve
   useEffect(() => {
     let active = true;
-    async function loadForecast() {
-      setLoadingForecast(true);
+    async function loadLeadForecast() {
+      setLoadingLeadForecast(true);
       try {
         const dateToForecast = analysisDate || new Date().toISOString().slice(0, 10);
         const params = new URLSearchParams({ date: dateToForecast });
         if (growthPct) params.set("growth_pct", String(growthPct));
-
         const weatherDay = selectedWeather?.selectedDay;
         if (weatherDay) {
           if (weatherDay.tempmax != null) params.set("temp_max", String(weatherDay.tempmax));
@@ -413,17 +613,16 @@ export default function HomePage() {
           if (weatherDay.precip != null) params.set("precip_in", String(weatherDay.precip));
           if (weatherDay.snowdepth != null && weatherDay.snowdepth > 0) params.set("snowfall_in", String(weatherDay.snowdepth));
         }
-
         const resp = await fetch(`/api/leads/forecast?${params.toString()}`, { cache: "no-store" });
         const payload = await resp.json();
-        if (active) setForecast(payload?.forecasts?.[0] || null);
+        if (active) setLeadForecast(payload?.forecasts?.[0] || null);
       } catch {
-        if (active) setForecast(null);
+        if (active) setLeadForecast(null);
       } finally {
-        if (active) setLoadingForecast(false);
+        if (active) setLoadingLeadForecast(false);
       }
     }
-    loadForecast();
+    loadLeadForecast();
     return () => { active = false; };
   }, [analysisDate, selectedWeather, growthPct]);
 
@@ -445,9 +644,51 @@ export default function HomePage() {
     return () => { active = false; };
   }, [selectedYear, growthPct]);
 
+  const forecastWeatherBadge = useCallback((point) => {
+    if (!point?.weather) return null;
+    const temp = point.weather.avgTempMax;
+    const snow = point.weather.avgSnowDepth ?? 0;
+    if (temp == null) return null;
+    if (snow > 0.5) return { label: "Snow", color: "#e0e0e0", textColor: "#333", pct: -59 };
+    if (temp < 40) return { label: "Cold", color: "#bbdefb", textColor: "#0d47a1", pct: -46 };
+    if (temp >= 60 && temp < 70) return { label: "Ideal", color: "#c8e6c9", textColor: "#2e7d32", pct: +20 };
+    if (temp >= 70 && temp < 80) return { label: "Warm", color: "#fff9c4", textColor: "#f57f17", pct: +15 };
+    if (temp >= 80) return { label: "Hot", color: "#ffccbc", textColor: "#bf360c", pct: +7 };
+    if (temp >= 50 && temp < 60) return { label: "Mild", color: "#e3f2fd", textColor: "#1565c0", pct: -1 };
+    if (temp >= 40 && temp < 50) return { label: "Cool", color: "#e8eaf6", textColor: "#283593", pct: -17 };
+    return null;
+  }, []);
+
+  const currentPhase = leadForecast?.phase || null;
+
+  const phaseBannerConfig = useMemo(() => {
+    if (!currentPhase) return null;
+    const configs = {
+      Early: { bg: "#e3f2fd", border: "#90caf9", message: `Early season \u2014 weather sensitivity is VERY HIGH. Nice days can produce +${currentPhase.niceUplift}% more leads.` },
+      Ramp: { bg: "#f3e5f5", border: "#ce93d8", message: `Ramp-up phase \u2014 weather sensitivity is HIGH. Nice days drive +${currentPhase.niceUplift}% uplift, bad days suppress ${currentPhase.badDrag}%.` },
+      Peak: { bg: "#e8f5e9", border: "#81c784", message: `Peak season \u2014 demand is strong regardless. Weather has moderate impact (+${currentPhase.niceUplift}% nice / ${currentPhase.badDrag}% bad).` },
+      Tail: { bg: "#fff3e0", border: "#ffb74d", message: `Late season tail \u2014 leads are winding down. Bad weather accelerates the decline (${currentPhase.badDrag}%).` },
+    };
+    return configs[currentPhase.name] || null;
+  }, [currentPhase]);
+
+  function handleTrendStartChange(value) {
+    setTrendStartDay(value);
+    if (rangeEndDay && value > rangeEndDay) {
+      setTrendEndDay(value);
+    }
+  }
+
+  function handleTrendEndChange(value) {
+    setTrendEndDay(value);
+    if (rangeStartDay && value < rangeStartDay) {
+      setTrendStartDay(value);
+    }
+  }
+
   const overlayData = useMemo(() => {
     const map = new Map();
-    for (const series of displaySeries) {
+    for (const series of displaySeriesFiltered) {
       for (const point of series.points || []) {
         const row = map.get(point.dayKey) || { dayKey: point.dayKey };
         row[`leads_${series.year}`] = point.filteredLeads;
@@ -457,79 +698,28 @@ export default function HomePage() {
         map.set(point.dayKey, row);
       }
     }
-
     if (seasonalCurve?.curve) {
       for (const cp of seasonalCurve.curve) {
+        if (!isWithinTrendRange({ dayKey: cp.dayKey })) continue;
         const row = map.get(cp.dayKey) || { dayKey: cp.dayKey };
         row.baselineWeekday = cp.weekdayBaseline;
-        row.baselineSaturday = cp.saturdayBaseline;
         map.set(cp.dayKey, row);
       }
     }
-
     return [...map.values()].sort((a, b) => a.dayKey.localeCompare(b.dayKey));
-  }, [displaySeries, seasonalCurve]);
-
-  // Weather badge logic for table rows
-  const forecastWeatherBadge = useCallback((point) => {
-    if (!point?.weather) return null;
-    const temp = point.weather.avgTempMax;
-    const snow = point.weather.avgSnowDepth ?? 0;
-    if (temp == null) return null;
-
-    if (snow > 0.5) return { label: "Snow", color: "#e0e0e0", textColor: "#333", pct: -59 };
-    if (temp < 40) return { label: "Cold", color: "#bbdefb", textColor: "#0d47a1", pct: -46 };
-    if (temp >= 60 && temp < 70) return { label: "Sunny", color: "#fff9c4", textColor: "#f57f17", pct: +20 };
-    if (temp >= 70 && temp < 80) return { label: "Warm", color: "#c8e6c9", textColor: "#2e7d32", pct: +15 };
-    if (temp >= 80) return { label: "Hot", color: "#ffccbc", textColor: "#bf360c", pct: +7 };
-    if (temp >= 50 && temp < 60) return { label: "Mild", color: "#e3f2fd", textColor: "#1565c0", pct: -1 };
-    if (temp >= 40 && temp < 50) return { label: "Cool", color: "#e8eaf6", textColor: "#283593", pct: -17 };
-    return null;
-  }, []);
-
-  const currentPhase = useMemo(() => {
-    if (!forecast?.phase) return null;
-    return forecast.phase;
-  }, [forecast]);
-
-  const phaseBannerConfig = useMemo(() => {
-    if (!currentPhase) return null;
-    const configs = {
-      Early: {
-        bg: "#e3f2fd",
-        border: "#90caf9",
-        icon: "snowflake",
-        message: `Early season — weather sensitivity is VERY HIGH. Nice days can produce +${currentPhase.niceUplift}% more leads.`,
-      },
-      Ramp: {
-        bg: "#f3e5f5",
-        border: "#ce93d8",
-        icon: "trending_up",
-        message: `Ramp-up phase — weather sensitivity is HIGH. Nice days drive +${currentPhase.niceUplift}% uplift, bad days suppress ${currentPhase.badDrag}%.`,
-      },
-      Peak: {
-        bg: "#e8f5e9",
-        border: "#81c784",
-        icon: "local_florist",
-        message: `Peak season — demand is strong regardless. Weather has moderate impact (+${currentPhase.niceUplift}% nice / ${currentPhase.badDrag}% bad).`,
-      },
-      Tail: {
-        bg: "#fff3e0",
-        border: "#ffb74d",
-        icon: "schedule",
-        message: `Late season tail — leads are winding down. Bad weather accelerates the decline (${currentPhase.badDrag}%).`,
-      },
-    };
-    return configs[currentPhase.name] || null;
-  }, [currentPhase]);
+  }, [displaySeriesFiltered, seasonalCurve, rangeStartDay, rangeEndDay]);
 
   const selectedRadarMarket =
     (marketWeather?.markets || []).find((market) => market.name === selectedMarket) || null;
-  const yoyCards = selectedRadarMarket?.yoy || marketWeather?.overview?.yoyCards || {};
-  const metricCard4 = yoyCards[fourthMetric.key] || null;
+  const weatherComparisonLabel =
+    selectedRadarMarket?.comparisonLabel || marketWeather?.overview?.comparisonLabel || "vs 5Y Avg";
+  const rollingComparison = selectedWeather?.rollingComparisons || null;
+  const rollingComparisonLabel = rollingComparison?.comparisonLabel || "vs 5Y Avg";
+  const prior7Cards = rollingComparison?.prior7?.cards || null;
+  const next7Cards = rollingComparison?.next7?.cards || null;
   const toggleSeries =
-    displaySeries.find((series) => series.year === Number(toggleYear)) ||
-    displaySeries[0] ||
+    displaySeriesFiltered.find((series) => series.year === Number(toggleYear)) ||
+    displaySeriesFiltered[0] ||
     null;
 
   return (
@@ -632,61 +822,267 @@ export default function HomePage() {
         </article>
       </section>
 
-      {(marketsError || weatherError || selectedWeatherError || leadsError) && (
+      {(marketsError || weatherError || selectedWeatherError || leadsError || priorityForecastError) && (
         <section>
           {marketsError && <p className="error">{marketsError}</p>}
           {weatherError && <p className="error">{weatherError}</p>}
           {selectedWeatherError && <p className="error">{selectedWeatherError}</p>}
           {leadsError && <p className="error">{leadsError}</p>}
+          {priorityForecastError && <p className="error">{priorityForecastError}</p>}
         </section>
       )}
 
-      <section className="kpi-grid">
-        <article className="kpi-card">
-          <h3>Avg Max Temp (YoY)</h3>
-          <p className="kpi-value">{formatYoY(yoyCards.avgMaxTemp, 1, "°F").current}</p>
-          <p className="kpi-delta">{formatYoY(yoyCards.avgMaxTemp, 1, "°F").delta}</p>
-        </article>
-
-        <article className="kpi-card">
-          <h3>Avg Min Temp (YoY)</h3>
-          <p className="kpi-value">{formatYoY(yoyCards.avgMinTemp, 1, "°F").current}</p>
-          <p className="kpi-delta">{formatYoY(yoyCards.avgMinTemp, 1, "°F").delta}</p>
-        </article>
-
-        <article className="kpi-card">
-          <h3>Avg UV (YoY)</h3>
-          <p className="kpi-value">{formatYoY(yoyCards.avgUv, 1).current}</p>
-          <p className="kpi-delta">{formatYoY(yoyCards.avgUv, 1).delta}</p>
-        </article>
-
-        <article className="kpi-card">
-          <div className="kpi-header-inline">
-            <h3>{fourthMetric.label} (YoY)</h3>
-            <select
-              value={fourthMetric.key}
-              onChange={(event) => setFourthMetricKey(event.target.value)}
-            >
-              {FOURTH_METRIC_OPTIONS.map((option) => (
-                <option key={option.key} value={option.key}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+      <section className="panel">
+        <div className="trend-header">
+          <h2>7-Day Actual + 7-Day Forecast ({rollingComparisonLabel})</h2>
+        </div>
+        <div className="split-kpi-sections">
+          <div>
+            <h3 className="subsection-title">Prior 7 Days</h3>
+            <div className="kpi-grid compact-kpi-grid">
+              <article className="kpi-card">
+                <h3>Avg Max Temp</h3>
+                <p className="kpi-value">
+                  {formatYoY(prior7Cards?.avgMaxTemp, 1, "°F", rollingComparisonLabel).current}
+                </p>
+                <p className="kpi-delta">
+                  {formatYoY(prior7Cards?.avgMaxTemp, 1, "°F", rollingComparisonLabel).delta}
+                </p>
+              </article>
+              <article className="kpi-card">
+                <h3>Avg Min Temp</h3>
+                <p className="kpi-value">
+                  {formatYoY(prior7Cards?.avgMinTemp, 1, "°F", rollingComparisonLabel).current}
+                </p>
+                <p className="kpi-delta">
+                  {formatYoY(prior7Cards?.avgMinTemp, 1, "°F", rollingComparisonLabel).delta}
+                </p>
+              </article>
+              <article className="kpi-card">
+                <h3>Avg UV</h3>
+                <p className="kpi-value">
+                  {formatYoY(prior7Cards?.avgUv, 1, "", rollingComparisonLabel).current}
+                </p>
+                <p className="kpi-delta">
+                  {formatYoY(prior7Cards?.avgUv, 1, "", rollingComparisonLabel).delta}
+                </p>
+              </article>
+              <article className="kpi-card">
+                <div className="kpi-header-inline">
+                  <h3>{fourthMetric.label}</h3>
+                  <select
+                    value={fourthMetric.key}
+                    onChange={(event) => setFourthMetricKey(event.target.value)}
+                  >
+                    {FOURTH_METRIC_OPTIONS.map((option) => (
+                      <option key={option.key} value={option.key}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <p className="kpi-value">
+                  {formatYoY(
+                    prior7Cards?.[fourthMetric.key],
+                    fourthMetric.digits,
+                    ` ${fourthMetric.unit}`,
+                    rollingComparisonLabel,
+                  ).current}
+                </p>
+                <p className="kpi-delta">
+                  {formatYoY(
+                    prior7Cards?.[fourthMetric.key],
+                    fourthMetric.digits,
+                    ` ${fourthMetric.unit}`,
+                    rollingComparisonLabel,
+                  ).delta}
+                </p>
+              </article>
+            </div>
           </div>
-          <p className="kpi-value">
-            {formatYoY(metricCard4, fourthMetric.digits, ` ${fourthMetric.unit}`).current}
-          </p>
-          <p className="kpi-delta">
-            {formatYoY(metricCard4, fourthMetric.digits, ` ${fourthMetric.unit}`).delta}
-          </p>
-        </article>
+
+          <div>
+            <h3 className="subsection-title">Next 7 Days Forecast</h3>
+            <div className="kpi-grid compact-kpi-grid">
+              <article className="kpi-card">
+                <h3>Avg Max Temp</h3>
+                <p className="kpi-value">
+                  {formatYoY(next7Cards?.avgMaxTemp, 1, "°F", rollingComparisonLabel).current}
+                </p>
+                <p className="kpi-delta">
+                  {formatYoY(next7Cards?.avgMaxTemp, 1, "°F", rollingComparisonLabel).delta}
+                </p>
+              </article>
+              <article className="kpi-card">
+                <h3>Avg Min Temp</h3>
+                <p className="kpi-value">
+                  {formatYoY(next7Cards?.avgMinTemp, 1, "°F", rollingComparisonLabel).current}
+                </p>
+                <p className="kpi-delta">
+                  {formatYoY(next7Cards?.avgMinTemp, 1, "°F", rollingComparisonLabel).delta}
+                </p>
+              </article>
+              <article className="kpi-card">
+                <h3>Avg UV</h3>
+                <p className="kpi-value">
+                  {formatYoY(next7Cards?.avgUv, 1, "", rollingComparisonLabel).current}
+                </p>
+                <p className="kpi-delta">
+                  {formatYoY(next7Cards?.avgUv, 1, "", rollingComparisonLabel).delta}
+                </p>
+              </article>
+              <article className="kpi-card">
+                <h3>{fourthMetric.label}</h3>
+                <p className="kpi-value">
+                  {formatYoY(
+                    next7Cards?.[fourthMetric.key],
+                    fourthMetric.digits,
+                    ` ${fourthMetric.unit}`,
+                    rollingComparisonLabel,
+                  ).current}
+                </p>
+                <p className="kpi-delta">
+                  {formatYoY(
+                    next7Cards?.[fourthMetric.key],
+                    fourthMetric.digits,
+                    ` ${fourthMetric.unit}`,
+                    rollingComparisonLabel,
+                  ).delta}
+                </p>
+              </article>
+            </div>
+          </div>
+        </div>
       </section>
 
-      {/* Lead Prediction Model Section */}
+      <section className="panel">
+        <div className="trend-header">
+          <h2>Priority Market Forecast Blend</h2>
+          <div className="forecast-controls">
+            <label>
+              Forecast View
+              <select
+                value={forecastScope}
+                onChange={(event) => setForecastScope(event.target.value)}
+              >
+                {forecastMarketOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="forecast-window-toggle">
+              {[3, 7, 15].map((days) => (
+                <button
+                  key={days}
+                  type="button"
+                  className={forecastWindowDays === days ? "active" : ""}
+                  onClick={() => setForecastWindowDays(days)}
+                >
+                  {days} Day
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <p className="subtle">
+          {forecastScopeLabel}
+        </p>
+        {loadingPriorityForecast ? (
+          <p>Loading blended forecast...</p>
+        ) : (
+          <>
+            <div className="forecast-summary-grid">
+              <article className="forecast-mini-card">
+                <span>Avg Max Temp</span>
+                <strong>{formatTemp(forecastSummary.avgMax, 0)}</strong>
+              </article>
+              <article className="forecast-mini-card">
+                <span>Avg Min Temp</span>
+                <strong>{formatTemp(forecastSummary.avgMin, 0)}</strong>
+              </article>
+              <article className="forecast-mini-card">
+                <span>Avg Precip Prob</span>
+                <strong>{formatPercent(forecastSummary.avgPrecipProb, 0)}</strong>
+              </article>
+              <article className="forecast-mini-card">
+                <span>Projected Snow Depth</span>
+                <strong>{formatNumber(forecastSummary.avgSnowDepth, 2)} in</strong>
+              </article>
+            </div>
+
+            <div className="chart-wrap forecast-chart-wrap">
+              <ResponsiveContainer width="100%" height={300}>
+                <ComposedChart data={forecastPoints}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="dayLabel" />
+                  <YAxis yAxisId="temp" />
+                  <YAxis yAxisId="precipProb" orientation="right" />
+                  <Tooltip />
+                  <Legend />
+                  <Line
+                    yAxisId="temp"
+                    type="monotone"
+                    dataKey="avgTempMax"
+                    name="Avg Temp Max"
+                    stroke="#1f4f86"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                  <Line
+                    yAxisId="temp"
+                    type="monotone"
+                    dataKey="avgTempMin"
+                    name="Avg Temp Min"
+                    stroke="#118257"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                  <Bar
+                    yAxisId="precipProb"
+                    dataKey="avgPrecipProb"
+                    name="Avg Precip Prob (%)"
+                    fill="#8a5cf5"
+                    barSize={10}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Avg Max Temp</th>
+                    <th>Avg Min Temp</th>
+                    <th>Avg UV</th>
+                    <th>Avg Precip Prob</th>
+                    <th>Projected Snow Depth</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {forecastPoints.map((point) => (
+                    <tr key={point.date}>
+                      <td>{point.dayLabel}</td>
+                      <td>{formatTemp(point.avgTempMax, 0)}</td>
+                      <td>{formatTemp(point.avgTempMin, 0)}</td>
+                      <td>{formatNumber(point.avgUv, 1)}</td>
+                      <td>{formatPercent(point.avgPrecipProb, 0)}</td>
+                      <td>{formatNumber(point.avgSnowDepth, 2)} in</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </section>
+
       <section className="prediction-section">
-        <article className="panel forecast-card">
-          <div className="forecast-header">
+        <article className="panel prediction-card">
+          <div className="prediction-header">
             <h2>Lead Forecast</h2>
             <div className="growth-calibration">
               <label>
@@ -705,33 +1101,32 @@ export default function HomePage() {
               </label>
             </div>
           </div>
-
-          {loadingForecast ? (
+          {loadingLeadForecast ? (
             <p className="subtle">Loading forecast...</p>
-          ) : forecast?.inSeason ? (
-            <div className="forecast-body">
-              <div className="forecast-main">
-                <div className="forecast-predicted">
-                  <span className="forecast-number">{forecast.predictedLeads}</span>
-                  <span className="forecast-label">expected leads</span>
+          ) : leadForecast?.inSeason ? (
+            <div className="prediction-body">
+              <div className="prediction-main">
+                <div className="prediction-predicted">
+                  <span className="prediction-number">{leadForecast.predictedLeads}</span>
+                  <span className="prediction-label">expected leads</span>
                 </div>
-                <div className="forecast-date">
-                  {formatDateLabel(forecast.date)} ({forecast.dowLabel})
+                <div className="prediction-date">
+                  {formatDateLabel(leadForecast.date)} ({leadForecast.dowLabel})
                 </div>
               </div>
-              <div className="forecast-factors">
+              <div className="prediction-factors">
                 <div className="factor-pill factor-season">
                   <span className="factor-name">Seasonal Baseline</span>
-                  <span className="factor-value">{forecast.seasonalBaseline}</span>
+                  <span className="factor-value">{leadForecast.seasonalBaseline}</span>
                 </div>
                 <div className="factor-pill factor-dow">
-                  <span className="factor-name">{forecast.dowLabel}</span>
-                  <span className="factor-value">{forecast.dowMultiplier}x</span>
+                  <span className="factor-name">{leadForecast.dowLabel}</span>
+                  <span className="factor-value">{leadForecast.dowMultiplier}x</span>
                 </div>
-                {forecast.weatherKey && (
-                  <div className={`factor-pill factor-weather ${forecast.weatherUpliftPct >= 0 ? "factor-positive" : "factor-negative"}`}>
-                    <span className="factor-name">{forecast.weatherCondition}</span>
-                    <span className="factor-value">{forecast.weatherUpliftPct >= 0 ? "+" : ""}{forecast.weatherUpliftPct}%</span>
+                {leadForecast.weatherKey && (
+                  <div className={`factor-pill ${leadForecast.weatherUpliftPct >= 0 ? "factor-positive" : "factor-negative"}`}>
+                    <span className="factor-name">{leadForecast.weatherCondition}</span>
+                    <span className="factor-value">{leadForecast.weatherUpliftPct >= 0 ? "+" : ""}{leadForecast.weatherUpliftPct}%</span>
                   </div>
                 )}
                 {growthPct !== 0 && (
@@ -742,8 +1137,8 @@ export default function HomePage() {
                 )}
               </div>
             </div>
-          ) : forecast ? (
-            <p className="subtle">{forecast.message || "Outside lawn season"}</p>
+          ) : leadForecast ? (
+            <p className="subtle">{leadForecast.message || "Outside lawn season"}</p>
           ) : (
             <p className="subtle">Select a date within lawn season (Feb 15 - May 10)</p>
           )}
@@ -790,10 +1185,10 @@ export default function HomePage() {
               <thead>
                 <tr>
                   <th>Market</th>
-                  <th>Avg Max Temp (YoY)</th>
-                  <th>Avg Min Temp (YoY)</th>
-                  <th>Avg UV (YoY)</th>
-                  <th>Avg Snow Depth (YoY)</th>
+                  <th>Avg Max Temp ({weatherComparisonLabel})</th>
+                  <th>Avg Min Temp ({weatherComparisonLabel})</th>
+                  <th>Avg UV ({weatherComparisonLabel})</th>
+                  <th>Avg Snow Depth ({weatherComparisonLabel})</th>
                 </tr>
               </thead>
               <tbody>
@@ -801,20 +1196,20 @@ export default function HomePage() {
                   <tr key={market.id || market.name}>
                     <td>{marketLabel(market)}</td>
                     <td>
-                      {formatYoY(market.yoy?.avgMaxTemp, 1, "°F").current} /{" "}
-                      {formatYoY(market.yoy?.avgMaxTemp, 1, "°F").delta.replace("YoY: ", "")}
+                      {formatYoY(market.yoy?.avgMaxTemp, 1, "°F", weatherComparisonLabel).current} /{" "}
+                      {compactDelta(market.yoy?.avgMaxTemp, 1, "°F", weatherComparisonLabel)}
                     </td>
                     <td>
-                      {formatYoY(market.yoy?.avgMinTemp, 1, "°F").current} /{" "}
-                      {formatYoY(market.yoy?.avgMinTemp, 1, "°F").delta.replace("YoY: ", "")}
+                      {formatYoY(market.yoy?.avgMinTemp, 1, "°F", weatherComparisonLabel).current} /{" "}
+                      {compactDelta(market.yoy?.avgMinTemp, 1, "°F", weatherComparisonLabel)}
                     </td>
                     <td>
-                      {formatYoY(market.yoy?.avgUv, 1).current} /{" "}
-                      {formatYoY(market.yoy?.avgUv, 1).delta.replace("YoY: ", "")}
+                      {formatYoY(market.yoy?.avgUv, 1, "", weatherComparisonLabel).current} /{" "}
+                      {compactDelta(market.yoy?.avgUv, 1, "", weatherComparisonLabel)}
                     </td>
                     <td>
-                      {formatYoY(market.yoy?.avgSnowDepth, 2, " in").current} /{" "}
-                      {formatYoY(market.yoy?.avgSnowDepth, 2, " in").delta.replace("YoY: ", "")}
+                      {formatYoY(market.yoy?.avgSnowDepth, 2, " in", weatherComparisonLabel).current} /{" "}
+                      {compactDelta(market.yoy?.avgSnowDepth, 2, " in", weatherComparisonLabel)}
                     </td>
                   </tr>
                 ))}
@@ -868,6 +1263,36 @@ export default function HomePage() {
               </select>
             </label>
 
+            <label>
+              Start Day
+              <select
+                value={rangeStartDay}
+                onChange={(event) => handleTrendStartChange(event.target.value)}
+                disabled={!seasonDayOptions.length}
+              >
+                {seasonDayOptions.map((dayKey) => (
+                  <option key={dayKey} value={dayKey}>
+                    {formatDayKeyLabel(dayKey)}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              End Day
+              <select
+                value={rangeEndDay}
+                onChange={(event) => handleTrendEndChange(event.target.value)}
+                disabled={!seasonDayOptions.length}
+              >
+                {seasonDayOptions.map((dayKey) => (
+                  <option key={dayKey} value={dayKey}>
+                    {formatDayKeyLabel(dayKey)}
+                  </option>
+                ))}
+              </select>
+            </label>
+
             {chartMode === "toggle" && (
               <label>
                 Display Year
@@ -875,8 +1300,8 @@ export default function HomePage() {
                   value={toggleYear || selectedYear || ""}
                   onChange={(event) => setToggleYear(Number(event.target.value))}
                 >
-                  {(displaySeries.length
-                    ? displaySeries.map((series) => series.year)
+                  {(displaySeriesFiltered.length
+                    ? displaySeriesFiltered.map((series) => series.year)
                     : availableYears
                   ).map((year) => (
                     <option key={year} value={year}>
@@ -917,7 +1342,7 @@ export default function HomePage() {
                 <YAxis yAxisId="temp" orientation="right" />
                 <Tooltip />
                 <Legend />
-                {displaySeries.map((series, index) => (
+                {displaySeriesFiltered.map((series, index) => (
                   <Line
                     key={`leads-${series.year}`}
                     yAxisId="leads"
@@ -942,7 +1367,7 @@ export default function HomePage() {
                     connectNulls
                   />
                 )}
-                {displaySeries.map((series, index) => (
+                {displaySeriesFiltered.map((series, index) => (
                   <Line
                     key={`weather-${series.year}`}
                     yAxisId="temp"
@@ -963,7 +1388,7 @@ export default function HomePage() {
           </div>
         ) : chartMode === "side" ? (
           <div className="side-chart-grid">
-            {displaySeries.map((series, index) => (
+            {displaySeriesFiltered.map((series, index) => (
                 <article key={series.year} className="mini-chart-card">
                   <h3>{series.year}</h3>
                   <ResponsiveContainer width="100%" height={250}>
@@ -1027,6 +1452,168 @@ export default function HomePage() {
       </section>
 
       <section className="panel">
+        <div className="trend-header">
+          <h2>Weather-Normalized Goal Tracking</h2>
+          <p className="subtle">Expected leads are modeled from temp, UV, snow depth, and precipitation.</p>
+        </div>
+        {loadingLeads ? (
+          <p>Building weather-adjusted baseline...</p>
+        ) : (
+          <>
+            <div className="goal-summary">
+              <span>MAE: {formatNumber(goalTracking?.mae, 1)}</span>
+              <span>R²: {formatNumber(goalTracking?.rSquared, 2)}</span>
+            </div>
+            <div className="chart-wrap">
+              <ResponsiveContainer width="100%" height={340}>
+                <ComposedChart data={goalTrackingData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="dayKey" />
+                  <YAxis yAxisId="leads" domain={[0, goalAxisMax]} />
+                  <Tooltip />
+                  <Legend />
+                  <Bar yAxisId="leads" dataKey="actualLeads" name="Actual Leads" fill="#118257" />
+                  <Line
+                    yAxisId="leads"
+                    type="monotone"
+                    dataKey="expectedLeads"
+                    name="Expected Leads"
+                    stroke="#1f4f86"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                  <Line
+                    yAxisId="leads"
+                    type="monotone"
+                    dataKey="upperBand"
+                    name="Upper Band"
+                    stroke="#8a5cf5"
+                    strokeDasharray="4 4"
+                    dot={false}
+                  />
+                  <Line
+                    yAxisId="leads"
+                    type="monotone"
+                    dataKey="lowerBand"
+                    name="Lower Band"
+                    stroke="#8a5cf5"
+                    strokeDasharray="4 4"
+                    dot={false}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          </>
+        )}
+      </section>
+
+      <section className="panel">
+        <div className="trend-header">
+          <h2>Lag Effect (0-7 Day)</h2>
+          <div className="trend-controls">
+            <label>
+              Weather Metric
+              <select value={lagMetric} onChange={(event) => setLagMetric(event.target.value)}>
+                {LAG_METRIC_OPTIONS.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
+        {loadingLeads ? (
+          <p>Calculating lag effects...</p>
+        ) : (
+          <>
+            <p className="subtle">
+              Strongest lag signal:{" "}
+              {lagBest
+                ? `${lagBest.lag} day(s), correlation ${formatNumber(lagBest.correlation, 2)}`
+                : "Not enough data"}
+            </p>
+            <div className="chart-wrap lag-chart-wrap">
+              <ResponsiveContainer width="100%" height={300}>
+                <ComposedChart data={lagChartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="lag" />
+                  <YAxis yAxisId="corr" domain={[-1, 1]} />
+                  <YAxis yAxisId="sample" orientation="right" />
+                  <Tooltip />
+                  <Legend />
+                  <Bar
+                    yAxisId="corr"
+                    dataKey="correlation"
+                    name="Correlation to Leads"
+                    fill="#1f4f86"
+                    barSize={24}
+                  />
+                  <Line
+                    yAxisId="sample"
+                    type="monotone"
+                    dataKey="sampleSize"
+                    name="Sample Size"
+                    stroke="#118257"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          </>
+        )}
+      </section>
+
+      <section className="panel">
+        <h2>Weather Condition Performance Matrix</h2>
+        {loadingLeads ? (
+          <p>Summarizing condition buckets...</p>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Condition Bucket</th>
+                  <th>Days</th>
+                  <th>Avg Leads (Filtered)</th>
+                  <th>Avg Total Leads</th>
+                  <th>Avg DM Leads</th>
+                  <th>DM Mix</th>
+                  <th>Selected Source Share</th>
+                  <th>Avg Temp Max</th>
+                  <th>Avg Snow Depth</th>
+                  <th>Avg Precip</th>
+                </tr>
+              </thead>
+              <tbody>
+                {conditionMatrix.length ? (
+                  conditionMatrix.map((row) => (
+                    <tr key={row.key}>
+                      <td>{row.label}</td>
+                      <td>{row.days}</td>
+                      <td>{formatNumber(row.avgFilteredLeads, 1)}</td>
+                      <td>{formatNumber(row.avgTotalLeads, 1)}</td>
+                      <td>{formatNumber(row.avgDirectMailLeads, 1)}</td>
+                      <td>{formatPercent(row.directMailShare, 1)}</td>
+                      <td>{formatPercent(row.selectedSourceShare, 1)}</td>
+                      <td>{formatTemp(row.avgTempMax, 0)}</td>
+                      <td>{formatNumber(row.avgSnowDepth, 2)} in</td>
+                      <td>{formatNumber(row.avgPrecip, 2)} in</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={10}>No condition buckets available for this selection.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section className="panel">
         <div className="table-header-row">
           <h2>Leads by Date vs Weather</h2>
           <div className="table-header-controls">
@@ -1058,10 +1645,40 @@ export default function HomePage() {
                 ))}
               </select>
             </label>
+
+            <label>
+              Start Day
+              <select
+                value={rangeStartDay}
+                onChange={(event) => handleTrendStartChange(event.target.value)}
+                disabled={!seasonDayOptions.length}
+              >
+                {seasonDayOptions.map((dayKey) => (
+                  <option key={dayKey} value={dayKey}>
+                    {formatDayKeyLabel(dayKey)}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              End Day
+              <select
+                value={rangeEndDay}
+                onChange={(event) => handleTrendEndChange(event.target.value)}
+                disabled={!seasonDayOptions.length}
+              >
+                {seasonDayOptions.map((dayKey) => (
+                  <option key={dayKey} value={dayKey}>
+                    {formatDayKeyLabel(dayKey)}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
         </div>
         <div className="table-wrap">
-            <table>
+          <table>
             <thead>
               <tr>
                 <th>Date</th>
@@ -1077,7 +1694,7 @@ export default function HomePage() {
               </tr>
             </thead>
             <tbody>
-              {(tableSeries?.points || []).map((point) => {
+              {tablePoints.map((point) => {
                 const badge = forecastWeatherBadge(point);
                 const d = new Date(`${point.date}T00:00:00`);
                 const dayName = d.toLocaleDateString("en-US", { weekday: "short" });
@@ -1091,10 +1708,7 @@ export default function HomePage() {
                   <td>{point.directMailLeads}</td>
                   <td>
                     {badge ? (
-                      <span
-                        className="weather-badge"
-                        style={{ background: badge.color, color: badge.textColor }}
-                      >
+                      <span className="weather-badge" style={{ background: badge.color, color: badge.textColor }}>
                         {badge.label} {badge.pct >= 0 ? "+" : ""}{badge.pct}%
                       </span>
                     ) : (

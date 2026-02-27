@@ -18,6 +18,7 @@ const PRIORITY_MARKET_KEYWORDS = [
 const ROLLING_DAYS = 7;
 const SEASON_END_MONTH_INDEX = 4;
 const SEASON_END_DAY = 10;
+const HISTORICAL_YEARS = 5;
 
 function toNumber(value) {
   const number = Number(value);
@@ -142,6 +143,42 @@ function compareMetrics(current, previous) {
   };
 }
 
+function averageMetricSummaries(summaries) {
+  if (!summaries.length) {
+    return {
+      avgMaxTemp: null,
+      avgMinTemp: null,
+      avgUv: null,
+      avgSnowDepth: null,
+      avgPrecip: null,
+      avgHumidity: null,
+      avgSnowfall: null,
+      snowDays: null,
+    };
+  }
+
+  const keys = [
+    "avgMaxTemp",
+    "avgMinTemp",
+    "avgUv",
+    "avgSnowDepth",
+    "avgPrecip",
+    "avgHumidity",
+    "avgSnowfall",
+    "snowDays",
+  ];
+
+  const output = {};
+  for (const key of keys) {
+    output[key] = mean(
+      summaries
+        .map((summary) => summary?.[key])
+        .filter((value) => value !== null && value !== undefined),
+    );
+  }
+  return output;
+}
+
 function buildSignal(summary, day) {
   let score = 0;
   if ((day?.snowdepth ?? 0) >= 0.5) score += 3;
@@ -161,7 +198,7 @@ function buildSignal(summary, day) {
   return "Weather setup is relatively favorable for normal cadence.";
 }
 
-function aggregateOverview(marketRows, analysisDateISO, windowStartISO, prevWindowStartISO, prevAnalysisDateISO) {
+function aggregateOverview(marketRows, analysisDateISO, windowStartISO) {
   const metricKeys = [
     "avgMaxTemp",
     "avgMinTemp",
@@ -174,16 +211,16 @@ function aggregateOverview(marketRows, analysisDateISO, windowStartISO, prevWind
   ];
 
   const averagesCurrent = {};
-  const averagesPrevious = {};
+  const averagesHistorical = {};
   for (const key of metricKeys) {
     averagesCurrent[key] = mean(
       marketRows
         .map((row) => row.metrics[key])
         .filter((value) => value !== null && value !== undefined),
     );
-    averagesPrevious[key] = mean(
+    averagesHistorical[key] = mean(
       marketRows
-        .map((row) => row.previousMetrics[key])
+        .map((row) => row.historicalMetrics[key])
         .filter((value) => value !== null && value !== undefined),
     );
   }
@@ -193,10 +230,10 @@ function aggregateOverview(marketRows, analysisDateISO, windowStartISO, prevWind
       analysisDate: analysisDateISO,
       startDate: windowStartISO,
       days: ROLLING_DAYS,
-      previousAnalysisDate: prevAnalysisDateISO,
-      previousStartDate: prevWindowStartISO,
+      historicalYears: HISTORICAL_YEARS,
     },
-    yoyCards: compareMetrics(averagesCurrent, averagesPrevious),
+    yoyCards: compareMetrics(averagesCurrent, averagesHistorical),
+    comparisonLabel: "vs 5Y Avg",
     marketCount: marketRows.length,
   };
 }
@@ -225,11 +262,6 @@ export async function GET(request) {
     const analysisDateISO = formatISODate(analysisDate);
     const windowStartISO = formatISODate(shiftDays(analysisDate, -(ROLLING_DAYS - 1)));
 
-    const previousDate = new Date(analysisDate);
-    previousDate.setUTCFullYear(previousDate.getUTCFullYear() - 1);
-    const prevAnalysisDateISO = formatISODate(previousDate);
-    const prevWindowStartISO = formatISODate(shiftDays(previousDate, -(ROLLING_DAYS - 1)));
-
     const marketsConfig = await loadMarketsConfig();
     const allMarkets = Array.isArray(marketsConfig.markets) ? marketsConfig.markets : [];
     if (!allMarkets.length) {
@@ -251,26 +283,39 @@ export async function GET(request) {
 
     const rows = await mapWithConcurrency(selectedMarkets, concurrency, async (market) => {
       try {
+        const weatherLocation = market.weatherQuery || market.name;
         const current = await getOrFetchWeatherRange({
-          marketName: market.name,
+          marketName: weatherLocation,
           startDate: windowStartISO,
           endDate: analysisDateISO,
           apiKey,
         });
-        const previous = await getOrFetchWeatherRange({
-          marketName: market.name,
-          startDate: prevWindowStartISO,
-          endDate: prevAnalysisDateISO,
-          apiKey,
-        });
+
+        const historySummaries = [];
+        for (let yearsBack = 1; yearsBack <= HISTORICAL_YEARS; yearsBack += 1) {
+          const historicalEndDate = new Date(analysisDate);
+          historicalEndDate.setUTCFullYear(historicalEndDate.getUTCFullYear() - yearsBack);
+          const historicalEndISO = formatISODate(historicalEndDate);
+          const historicalStartISO = formatISODate(
+            shiftDays(historicalEndDate, -(ROLLING_DAYS - 1)),
+          );
+
+          const historicalRange = await getOrFetchWeatherRange({
+            marketName: weatherLocation,
+            startDate: historicalStartISO,
+            endDate: historicalEndISO,
+            apiKey,
+          });
+          historySummaries.push(summarizeWindow(historicalRange.days || []));
+        }
 
         const day =
           current.days.find((entry) => entry.datetime === analysisDateISO) ||
           current.days[current.days.length - 1] ||
           null;
         const metrics = summarizeWindow(current.days || []);
-        const previousMetrics = summarizeWindow(previous.days || []);
-        const yoy = compareMetrics(metrics, previousMetrics);
+        const historicalMetrics = averageMetricSummaries(historySummaries);
+        const yoy = compareMetrics(metrics, historicalMetrics);
 
         return {
           ok: true,
@@ -294,9 +339,10 @@ export async function GET(request) {
                 }
               : null,
             metrics,
-            previousMetrics,
+            historicalMetrics,
             yoy,
             directMailSignal: buildSignal(metrics, day),
+            comparisonLabel: "vs 5Y Avg",
           },
         };
       } catch (error) {
@@ -344,8 +390,6 @@ export async function GET(request) {
         markets,
         analysisDateISO,
         windowStartISO,
-        prevWindowStartISO,
-        prevAnalysisDateISO,
       ),
       markets,
       errors,
