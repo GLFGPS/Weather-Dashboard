@@ -612,10 +612,8 @@ export default function HomePage() {
 
   const selectedRadarMarket =
     (marketWeather?.markets || []).find((market) => market.name === selectedMarket) || null;
-  const yoyCards = selectedRadarMarket?.yoy || marketWeather?.overview?.yoyCards || {};
   const weatherComparisonLabel =
     selectedRadarMarket?.comparisonLabel || marketWeather?.overview?.comparisonLabel || "vs 5Y Avg";
-  const metricCard4 = yoyCards[fourthMetric.key] || null;
   const rollingComparison = selectedWeather?.rollingComparisons || null;
   const rollingComparisonLabel = rollingComparison?.comparisonLabel || "vs 5Y Avg";
   const prior7Cards = rollingComparison?.prior7?.cards || null;
@@ -735,68 +733,6 @@ export default function HomePage() {
         </section>
       )}
 
-      <section className="kpi-grid">
-        <article className="kpi-card">
-          <h3>Avg Max Temp ({weatherComparisonLabel})</h3>
-          <p className="kpi-value">
-            {formatYoY(yoyCards.avgMaxTemp, 1, "°F", weatherComparisonLabel).current}
-          </p>
-          <p className="kpi-delta">
-            {formatYoY(yoyCards.avgMaxTemp, 1, "°F", weatherComparisonLabel).delta}
-          </p>
-        </article>
-
-        <article className="kpi-card">
-          <h3>Avg Min Temp ({weatherComparisonLabel})</h3>
-          <p className="kpi-value">
-            {formatYoY(yoyCards.avgMinTemp, 1, "°F", weatherComparisonLabel).current}
-          </p>
-          <p className="kpi-delta">
-            {formatYoY(yoyCards.avgMinTemp, 1, "°F", weatherComparisonLabel).delta}
-          </p>
-        </article>
-
-        <article className="kpi-card">
-          <h3>Avg UV ({weatherComparisonLabel})</h3>
-          <p className="kpi-value">{formatYoY(yoyCards.avgUv, 1, "", weatherComparisonLabel).current}</p>
-          <p className="kpi-delta">{formatYoY(yoyCards.avgUv, 1, "", weatherComparisonLabel).delta}</p>
-        </article>
-
-        <article className="kpi-card">
-          <div className="kpi-header-inline">
-            <h3>
-              {fourthMetric.label} ({weatherComparisonLabel})
-            </h3>
-            <select
-              value={fourthMetric.key}
-              onChange={(event) => setFourthMetricKey(event.target.value)}
-            >
-              {FOURTH_METRIC_OPTIONS.map((option) => (
-                <option key={option.key} value={option.key}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <p className="kpi-value">
-            {formatYoY(
-              metricCard4,
-              fourthMetric.digits,
-              ` ${fourthMetric.unit}`,
-              weatherComparisonLabel,
-            ).current}
-          </p>
-          <p className="kpi-delta">
-            {formatYoY(
-              metricCard4,
-              fourthMetric.digits,
-              ` ${fourthMetric.unit}`,
-              weatherComparisonLabel,
-            ).delta}
-          </p>
-        </article>
-      </section>
-
       <section className="panel">
         <div className="trend-header">
           <h2>7-Day Actual + 7-Day Forecast ({rollingComparisonLabel})</h2>
@@ -833,7 +769,19 @@ export default function HomePage() {
                 </p>
               </article>
               <article className="kpi-card">
-                <h3>{fourthMetric.label}</h3>
+                <div className="kpi-header-inline">
+                  <h3>{fourthMetric.label}</h3>
+                  <select
+                    value={fourthMetric.key}
+                    onChange={(event) => setFourthMetricKey(event.target.value)}
+                  >
+                    {FOURTH_METRIC_OPTIONS.map((option) => (
+                      <option key={option.key} value={option.key}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <p className="kpi-value">
                   {formatYoY(
                     prior7Cards?.[fourthMetric.key],
