@@ -724,6 +724,27 @@ th {
   background: #e1f5fe;
 }
 
+.dashboard-summary {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #e8eef3;
+}
+
+.dashboard-summary p {
+  margin: 0 0 6px;
+  font-size: 0.82rem;
+  color: #4b6378;
+  line-height: 1.45;
+}
+
+.dashboard-summary p:last-child {
+  margin-bottom: 0;
+}
+
+.dashboard-summary strong {
+  color: #1a3a57;
+}
+
 .prediction-explainer {
   margin-top: 14px;
   padding-top: 14px;
