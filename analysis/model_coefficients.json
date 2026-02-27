@@ -26,20 +26,37 @@
   },
 
   "seasonal_baseline_weekly": {
-    "_note": "Average weekday lead count by calendar week (5-year average, at 2025 volume level). Multiply by dow_multiplier and weather_multiplier for adjusted forecast.",
-    "7": 77,
-    "8": 108,
-    "9": 131,
-    "10": 184,
-    "11": 210,
-    "12": 249,
-    "13": 216,
-    "14": 220,
-    "15": 229,
-    "16": 220,
-    "17": 192,
-    "18": 144,
-    "19": 85
+    "_note": "ORGANIC-ONLY weekday baseline (excludes DM). DM leads added separately via dm_addon_weekly when DM In Home is toggled.",
+    "7": 18,
+    "8": 37,
+    "9": 56,
+    "10": 92,
+    "11": 108,
+    "12": 117,
+    "13": 126,
+    "14": 115,
+    "15": 150,
+    "16": 135,
+    "17": 117,
+    "18": 85,
+    "19": 53
+  },
+
+  "dm_addon_weekly": {
+    "_note": "Average DM leads per weekday when mail is in home. Add to organic baseline. Varies by week because drop volume and timing differ.",
+    "7": 1,
+    "8": 29,
+    "9": 35,
+    "10": 45,
+    "11": 50,
+    "12": 112,
+    "13": 69,
+    "14": 83,
+    "15": 60,
+    "16": 28,
+    "17": 17,
+    "18": 10,
+    "19": 5
   },
 
   "temperature_impact": {

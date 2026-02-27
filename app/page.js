@@ -600,28 +600,38 @@ export default function HomePage() {
     }
   }
 
+  const forecastDateMin = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const forecastDateMax = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 14);
+    const seasonEnd = `${d.getFullYear()}-05-10`;
+    const futureDate = d.toISOString().slice(0, 10);
+    return futureDate < seasonEnd ? futureDate : seasonEnd;
+  }, []);
+
   useEffect(() => {
-    if (!forecastDate && analysisDate) {
-      setForecastDate(analysisDate);
+    if (!forecastDate) {
+      setForecastDate(forecastDateMin);
     }
-  }, [analysisDate, forecastDate]);
+  }, [forecastDateMin, forecastDate]);
 
   useEffect(() => {
     let active = true;
     async function loadLeadForecast() {
       setLoadingLeadForecast(true);
       try {
-        const dateToForecast = forecastDate || analysisDate || new Date().toISOString().slice(0, 10);
+        const dateToForecast = forecastDate || forecastDateMin;
         const params = new URLSearchParams({ date: dateToForecast });
         if (growthPct) params.set("growth_pct", String(growthPct));
         if (dmInHome) params.set("dm_in_home", "1");
-        const weatherDay = selectedWeather?.selectedDay;
-        if (weatherDay) {
-          if (weatherDay.tempmax != null) params.set("temp_max", String(weatherDay.tempmax));
-          if (weatherDay.uvindex != null) params.set("sunshine_hrs", String(Math.min(weatherDay.uvindex * 1.5, 14)));
-          if (weatherDay.precip != null) params.set("precip_in", String(weatherDay.precip));
-          if (weatherDay.snowdepth != null && weatherDay.snowdepth > 0) params.set("snowfall_in", String(weatherDay.snowdepth));
+
+        const forecastDay = (priorityForecast?.forecast || []).find((p) => p.date === dateToForecast);
+        if (forecastDay) {
+          if (forecastDay.avgTempMax != null) params.set("temp_max", String(forecastDay.avgTempMax));
+          if (forecastDay.avgPrecipProb != null) params.set("precip_prob", String(forecastDay.avgPrecipProb));
+          if (forecastDay.avgSnowDepth != null) params.set("snow_depth", String(forecastDay.avgSnowDepth));
         }
+
         const resp = await fetch(`/api/leads/forecast?${params.toString()}`, { cache: "no-store" });
         const payload = await resp.json();
         if (active) setLeadForecast(payload?.forecasts?.[0] || null);
@@ -633,7 +643,7 @@ export default function HomePage() {
     }
     loadLeadForecast();
     return () => { active = false; };
-  }, [forecastDate, analysisDate, selectedWeather, growthPct, dmInHome]);
+  }, [forecastDate, forecastDateMin, priorityForecast, growthPct, dmInHome]);
 
   useEffect(() => {
     let active = true;
@@ -642,6 +652,7 @@ export default function HomePage() {
         const year = selectedYear || new Date().getFullYear();
         const params = new URLSearchParams({ seasonal_curve: String(year) });
         if (growthPct) params.set("growth_pct", String(growthPct));
+        if (dmInHome) params.set("dm_in_home", "1");
         const resp = await fetch(`/api/leads/forecast?${params.toString()}`, { cache: "no-store" });
         const payload = await resp.json();
         if (active) setSeasonalCurve(payload);
@@ -651,7 +662,7 @@ export default function HomePage() {
     }
     loadCurve();
     return () => { active = false; };
-  }, [selectedYear, growthPct]);
+  }, [selectedYear, growthPct, dmInHome]);
 
   const forecastWeatherBadge = useCallback((point) => {
     if (!point?.weather) return null;
@@ -1095,12 +1106,12 @@ export default function HomePage() {
             <h2>Lead Forecast</h2>
             <div className="prediction-controls-row">
               <label>
-                Forecast Date
+                Forecast Date (next 15 days)
                 <input
                   type="date"
-                  value={forecastDate || analysisDate}
-                  min={`${new Date().getFullYear()}-02-15`}
-                  max={`${new Date().getFullYear()}-05-10`}
+                  value={forecastDate || forecastDateMin}
+                  min={forecastDateMin}
+                  max={forecastDateMax}
                   onChange={(event) => setForecastDate(event.target.value)}
                 />
               </label>
@@ -1131,9 +1142,15 @@ export default function HomePage() {
                 </div>
                 <div className="prediction-factors">
                   <div className="factor-pill factor-season">
-                    <span className="factor-name">Seasonal Baseline</span>
-                    <span className="factor-value">{leadForecast.seasonalBaseline}</span>
+                    <span className="factor-name">Organic Baseline</span>
+                    <span className="factor-value">{leadForecast.organicBaseline}</span>
                   </div>
+                  {leadForecast.dmInHome && leadForecast.dmAddon > 0 && (
+                    <div className="factor-pill factor-dm">
+                      <span className="factor-name">DM In Home</span>
+                      <span className="factor-value">+{leadForecast.dmAddon} ({leadForecast.dmPct}%)</span>
+                    </div>
+                  )}
                   <div className="factor-pill factor-dow">
                     <span className="factor-name">{leadForecast.dowLabel}</span>
                     <span className="factor-value">{leadForecast.dowMultiplier}x</span>
@@ -1144,10 +1161,10 @@ export default function HomePage() {
                       <span className="factor-value">{leadForecast.weatherUpliftPct >= 0 ? "+" : ""}{leadForecast.weatherUpliftPct}%</span>
                     </div>
                   )}
-                  {dmInHome && (
-                    <div className="factor-pill factor-dm">
-                      <span className="factor-name">DM In Home</span>
-                      <span className="factor-value">+45%</span>
+                  {leadForecast.weatherInput && (
+                    <div className="factor-pill">
+                      <span className="factor-name">Forecast Weather</span>
+                      <span className="factor-value">{Math.round(leadForecast.weatherInput.tempMax)}°F · {Math.round(leadForecast.weatherInput.precipProb ?? 0)}% precip</span>
                     </div>
                   )}
                   {growthPct !== 0 && (
@@ -1168,16 +1185,26 @@ export default function HomePage() {
           <div className="prediction-right">
             <div className="prediction-math">
               <h3>How This Works</h3>
-              <p>Predicted from 5 years of data (48K leads, 2021-2025). The model multiplies three factors together:</p>
+              <p>Predicted from 5 years of data (48K leads, 2021-2025). Uses the actual weather forecast for the selected date from our priority markets.</p>
               <div className="math-formula">
-                <span>Baseline</span> <span className="math-op">&times;</span>
-                <span>DOW</span> <span className="math-op">&times;</span>
+                <span>(Organic{dmInHome ? " + DM" : ""})</span>
+                <span className="math-op">&times;</span>
+                <span>DOW</span>
+                <span className="math-op">&times;</span>
                 <span>Weather</span>
-                {dmInHome && (<><span className="math-op">&times;</span><span>DM</span></>)}
                 {growthPct !== 0 && (<><span className="math-op">&times;</span><span>Growth</span></>)}
                 <span className="math-op">=</span>
                 <span className="math-result">{leadForecast?.predictedLeads ?? "—"}</span>
               </div>
+              {leadForecast?.inSeason && (
+                <p className="subtle" style={{ fontSize: "0.76rem" }}>
+                  ({leadForecast.organicBaseline}{leadForecast.dmInHome ? ` + ${leadForecast.dmAddon}` : ""})
+                  {" "}&times; {leadForecast.dowMultiplier}
+                  {" "}&times; {leadForecast.weatherMultiplier}
+                  {growthPct !== 0 ? ` × ${(1 + growthPct/100).toFixed(2)}` : ""}
+                  {" "}= {leadForecast.predictedLeads}
+                </p>
+              )}
               <div className="growth-calibration">
                 <label>
                   YoY Growth Adjustment
@@ -1201,10 +1228,10 @@ export default function HomePage() {
 
         <div className="phase-track">
           {[
-            { name: "Early", range: "Feb 15 – Mar 1", sensitivity: "Very High", bg: "#e3f2fd", border: "#90caf9", uplift: "+50%" },
-            { name: "Ramp", range: "Mar 1 – 17", sensitivity: "High", bg: "#f3e5f5", border: "#ce93d8", uplift: "+34%" },
-            { name: "Peak", range: "Mar 17 – Apr 16", sensitivity: "Moderate", bg: "#e8f5e9", border: "#81c784", uplift: "+10%" },
-            { name: "Tail", range: "Apr 16 – May 10", sensitivity: "Low-Mod", bg: "#fff3e0", border: "#ffb74d", uplift: "+5%" },
+            { name: "Early", range: "Feb 15 – Mar 1", sensitivity: "Very High", bg: "#e3f2fd", border: "#90caf9", nice: "+50%", bad: "-15%" },
+            { name: "Ramp", range: "Mar 1 – 17", sensitivity: "High", bg: "#f3e5f5", border: "#ce93d8", nice: "+34%", bad: "-16%" },
+            { name: "Peak", range: "Mar 17 – Apr 16", sensitivity: "Moderate", bg: "#e8f5e9", border: "#81c784", nice: "+10%", bad: "-9%" },
+            { name: "Tail", range: "Apr 16 – May 10", sensitivity: "Low-Mod", bg: "#fff3e0", border: "#ffb74d", nice: "+5%", bad: "-18%" },
           ].map((phase) => {
             const isActive = currentPhase?.name === phase.name;
             return (
@@ -1216,7 +1243,10 @@ export default function HomePage() {
                 <strong className="phase-bucket-name">{phase.name}</strong>
                 <span className="phase-bucket-range">{phase.range}</span>
                 <span className="phase-bucket-sensitivity">Weather: {phase.sensitivity}</span>
-                <span className="phase-bucket-uplift">Nice day: {phase.uplift}</span>
+                <span className="phase-bucket-impact">
+                  <span className="phase-nice">Nice {phase.nice}</span>
+                  <span className="phase-bad">Bad {phase.bad}</span>
+                </span>
               </div>
             );
           })}
