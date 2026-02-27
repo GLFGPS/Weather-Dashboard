@@ -796,9 +796,6 @@ export default function HomePage() {
           </div>
 
           <div className="filter-actions">
-            <button type="button" onClick={() => setShowAllLocations((value) => !value)}>
-              {showAllLocations ? "Show Key Locations" : "View All Locations"}
-            </button>
             <p className="subtle">
               Market radar values are rolling 7-day averages ending on selected date.
             </p>
@@ -1285,7 +1282,12 @@ export default function HomePage() {
       </section>
 
       <section className="panel">
-        <h2>Market Weather Radar</h2>
+        <div className="trend-header">
+          <h2>Market Weather Radar</h2>
+          <button type="button" onClick={() => setShowAllLocations((value) => !value)}>
+            {showAllLocations ? "Show Key Locations" : "View All Locations"}
+          </button>
+        </div>
         {loadingMarketWeather ? (
           <p>Loading market weather radar...</p>
         ) : (
