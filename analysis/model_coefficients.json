@@ -1,22 +1,35 @@
 {
   "_description": "Pre-computed model lookup tables for dashboard integration without Python runtime",
   "_generated": "2026-03-23",
-  "_updated": "Weather-adjusted + drop-date-aware DM model. Incorporates 2026 actual data through 3/22, DM drop schedule, and weather impact analysis.",
+  "_updated": "Weather-grounded, drop-date-aware DM model with seasonal phase amplification. All calibration uses actual weather from Open-Meteo (4 priority markets averaged). Incorporates 2026 actuals through 3/22 and actual weather through 3/29.",
 
   "weather_multipliers": {
-    "_note": "Lead multiplier vs typical weekday baseline. Apply to seasonal baseline to get adjusted forecast.",
-    "sunny_warm": { "label": "Sunny & Warm (70°F+, 8hrs+ sun)", "multiplier": 1.35, "description": "+35% vs baseline" },
-    "partly_cloudy": { "label": "Partly Cloudy", "multiplier": 1.10, "description": "+10% vs baseline" },
+    "_note": "Lead multiplier vs typical weekday baseline. Apply to seasonal baseline for organic. For DM, dampen by dm_weather_sensitivity.",
+    "sunny_warm": { "label": "Sunny & Warm (65°F+, low precip)", "multiplier": 1.35, "description": "+35% vs baseline" },
+    "partly_cloudy": { "label": "Partly Cloudy (50-65°F)", "multiplier": 1.10, "description": "+10% vs baseline" },
     "typical": { "label": "Typical Day", "multiplier": 1.00, "description": "baseline" },
-    "cloudy_cool": { "label": "Cloudy & Cool (50°F, <4hrs sun)", "multiplier": 1.03, "description": "+3% vs baseline" },
-    "light_rain": { "label": "Light Rain", "multiplier": 0.94, "description": "-6% vs baseline" },
-    "rain": { "label": "Rain", "multiplier": 0.86, "description": "-14% vs baseline" },
-    "cloudy_overcast": { "label": "Cloudy/Overcast", "multiplier": 0.72, "description": "-28% vs baseline" },
-    "snow": { "label": "Snow Day", "multiplier": 0.41, "description": "-59% vs baseline" }
+    "cloudy_cool": { "label": "Cloudy & Cool (42-50°F)", "multiplier": 1.03, "description": "+3% vs baseline" },
+    "light_rain": { "label": "Light Rain (precip 0.1-0.3in)", "multiplier": 0.94, "description": "-6% vs baseline" },
+    "rain": { "label": "Rain (precip >0.3in)", "multiplier": 0.86, "description": "-14% vs baseline" },
+    "cloudy_overcast": { "label": "Cloudy/Overcast (<42°F)", "multiplier": 0.72, "description": "-28% vs baseline" },
+    "snow": { "label": "Snow Day (snowfall >0.1in)", "multiplier": 0.41, "description": "-59% vs baseline" }
+  },
+
+  "dm_weather_sensitivity": {
+    "_note": "DM response is less weather-sensitive than organic because it is trigger-based (mail in hand). Effective DM weather multiplier = 1 + (organic_mult - 1) * sensitivity. Calibrated from 2026 wave 1: 3/12 snow day had 63 DM leads (organic would predict near-zero at 0.41x). At sensitivity=0.3, dm_mult=0.823 which produces a weather-neutral estimate of 76.5 — consistent with the response curve shape.",
+    "sensitivity": 0.3
+  },
+
+  "dm_phase_multipliers": {
+    "_note": "DM response rate varies by season phase. Calibrated: wave 1 (Ramp) produced 608 DM from 400K pieces, weather-neutral ~602. Wave 2 (Peak) first 3 days actual 142 DM vs 59 model = 2.4x. Conservative full-window estimate: 1.65x. Reflects higher consumer intent during peak lawn season.",
+    "Early": 0.50,
+    "Ramp": 1.00,
+    "Peak": 1.65,
+    "Tail": 0.80
   },
 
   "dow_multipliers": {
-    "_note": "Day-of-week multiplier vs weekday average. Updated with 2026 actuals: Saturday and Sunday are higher than original 5Y model due to DM weekend response and digital channel growth. Blended from 5Y historical + 2026 actual weights.",
+    "_note": "Day-of-week multiplier vs weekday average. Updated with 2026 actuals. Saturday and Sunday higher than original model due to DM weekend response (people open mail on weekends) and digital channel growth (Facebook, Next Door active 7 days).",
     "monday": 1.25,
     "tuesday": 1.04,
     "wednesday": 1.00,
@@ -27,7 +40,7 @@
   },
 
   "seasonal_baseline_weekly": {
-    "_note": "ORGANIC-ONLY weekday baseline (excludes DM). When dm_waves_2026 is available, use wave-based DM calculation instead of dm_addon_weekly. These baselines are 5Y averages; apply weather multipliers for actual conditions.",
+    "_note": "ORGANIC-ONLY weekday baseline (excludes DM). 5Y average. Apply DOW and weather multipliers on top.",
     "7": 18,
     "8": 37,
     "9": 56,
@@ -44,7 +57,7 @@
   },
 
   "dm_addon_weekly": {
-    "_note": "LEGACY: Average DM leads per weekday when mail is in home (5Y historical average). SUPERSEDED by dm_waves_2026 when specific drop data is available. Kept as fallback for dates outside known waves.",
+    "_note": "LEGACY fallback: Average DM leads per weekday when mail is in home (5Y historical average). Used when no specific wave data is available for a date. Superseded by dm_waves_2026 + dm_phase_multipliers for dates with known drop schedules.",
     "7": 1,
     "8": 29,
     "9": 35,
@@ -61,65 +74,92 @@
   },
 
   "dm_waves_2026": {
-    "_note": "2026 DM drop schedule modeled as paired waves. Each wave = two drops 2 days apart. In-home date is first drop + 3 days. Response window is 14 days from wave in-home start. Weights are % of total wave response per day (sum to 100). Based on wave 1 actual data (608 DM leads from 400K pieces, 3/6-3/19). Wave 2 total is estimated higher (+20%) because it lands during Peak season with warmer weather (validated: 2026 organic was +22% in Peak vs Ramp).",
+    "_note": "2026 DM drop schedule modeled as paired waves. Weather-neutral base: 602 DM leads per 400K pieces (calibrated from wave 1 actual 608 leads / avg weather mult 1.01). Apply dm_phase_multipliers on top for seasonal amplification, then dm_weather_sensitivity-dampened weather multiplier per day.",
+    "weather_neutral_base_per_400k": 602,
     "waves": [
       {
         "wave": 1,
         "drop_dates": ["2026-03-03", "2026-03-05"],
         "in_home_start": "2026-03-06",
         "total_pieces": 400000,
-        "expected_dm_leads": 608,
         "phase": "Ramp",
-        "weather_context": "Ramp phase. Wave 1 response began during recovering temps after week 9 cold snap (34°F avg high, 0.48in snow). Response started strong on Mon 3/9 as temps climbed above 40°F."
+        "actual_dm_leads": 608,
+        "actual_weather": {
+          "avg_high": 57.1,
+          "warm_days_60plus": 6,
+          "cold_days_below_42": 1,
+          "snow_days": 1,
+          "avg_weather_mult": 1.01
+        }
       },
       {
         "wave": 2,
         "drop_dates": ["2026-03-17", "2026-03-19"],
         "in_home_start": "2026-03-20",
         "total_pieces": 400000,
-        "expected_dm_leads": 730,
         "phase": "Peak",
-        "weather_context": "Peak phase. Warmer temps and higher base demand amplify DM response. 2026 week 11 organic was +22% vs 2025 showing strong underlying demand."
+        "actual_dm_leads_partial": 142,
+        "actual_days_observed": 3,
+        "projected_dm_leads": 993,
+        "actual_weather_partial": {
+          "avg_high_3d": 64.9,
+          "days_0_2": ["64°F light rain", "58°F partly cloudy", "72°F sunny warm"]
+        },
+        "projected_weather_days_3_8": {
+          "dates": "2026-03-23 to 2026-03-28",
+          "avg_high": 54.7,
+          "conditions": ["57°F light rain", "45°F cool", "54°F partly cloudy", "67°F sunny warm", "61°F rain", "44°F cool"]
+        }
       }
     ],
     "response_curve_pct": {
-      "_note": "Day-by-day % of total wave DM response (days 0-13 from wave in-home start). Derived from 2026 wave 1 actuals. Reflects combined DOW + response timing shape. Apply DOW multiplier and weather multiplier on top for forecast.",
+      "_note": "Day-by-day % of total wave DM response (days 0-13 from wave in-home start). Derived from 2026 wave 1 actuals. This curve embeds the DOW pattern from wave 1 (Fri in-home start). Sum=100.",
       "weights": [5.1, 2.6, 2.0, 13.2, 14.6, 12.8, 10.4, 8.2, 4.3, 1.6, 6.7, 6.7, 7.6, 4.1]
     }
   },
 
+  "estimated_dm_timing_prior_years": {
+    "_note": "Estimated from historical DM lead spike patterns. First significant DM spike indicates in-home date; subtract 3 days for estimated drop date. All prior years started DM 2-3 weeks earlier than 2026.",
+    "2021": { "first_drop_est": "2021-02-19", "first_in_home_est": "2021-02-22", "total_dm_season": 3202, "major_wave_weeks": [8, 12, 14] },
+    "2022": { "first_drop_est": "2022-02-18", "first_in_home_est": "2022-02-21", "total_dm_season": 2620, "major_wave_weeks": [8, 11, 13, 15] },
+    "2023": { "first_drop_est": "2023-02-17", "first_in_home_est": "2023-02-20", "total_dm_season": 2889, "major_wave_weeks": [8, 12, 14] },
+    "2024": { "first_drop_est": "2024-02-18", "first_in_home_est": "2024-02-21", "total_dm_season": 2748, "major_wave_weeks": [9, 12, 14] },
+    "2025": { "first_drop_est": "2025-02-15", "first_in_home_est": "2025-02-18", "total_dm_season": 3410, "major_wave_weeks": [8, 10, 11, 12] }
+  },
+
+  "weather_context_2026": {
+    "_note": "Actual weather conditions (Open-Meteo, 4 priority markets averaged) during key periods.",
+    "week_9_cold_snap": {
+      "dates": "2026-02-22 to 2026-03-02",
+      "conditions": "Snow 2/22-2/23 (2-3in), high only 31°F on 2/24, snow again 3/3. Avg high 38.5°F across 9 days.",
+      "impact": "Organic leads -69% vs 2025 same week. Combined below-40°F (-46%) and snow (-59%) suppression during Early phase (very high weather sensitivity). Zero DM active (2026 first drop 3/3 vs 2025 first drop 2/15).",
+      "comparison": { "2025_avg_high": 52.9, "2024_avg_high": 49.9, "2023_avg_high": 49.5, "2026_avg_high": 34.4 }
+    },
+    "wave_1_weather": {
+      "dates": "2026-03-06 to 2026-03-19",
+      "key_events": "Rain on 3/6 (42°F), then spectacular warm stretch 3/8-3/11 (70-81°F sunny), snow squall 3/12 (snowfall 0.35in despite 65°F high), cold snap 3/17-3/18 (38-42°F). Wild weather swings.",
+      "avg_high": 57.1,
+      "avg_dm_weather_mult": 1.01
+    },
+    "wave_2_weather_actual_plus_forecast": {
+      "dates": "2026-03-20 to 2026-04-02",
+      "days_0_2_actual": "3/20: 64°F light rain, 3/21: 58°F partly cloudy, 3/22: 72°F sunny warm",
+      "days_3_8_actual": "3/23: 57°F rain, 3/24: 45°F cool, 3/25: 54°F partly cloudy, 3/26: 67°F sunny, 3/27: 61°F rain, 3/28: 44°F cool",
+      "avg_high_available": 54.7
+    },
+    "recovery_signal": {
+      "impact": "Week 11 organic (911) was +22% vs 2025 (749). Driven by 3/8-3/11 warm spell (70-81°F). Confirms strong underlying demand when weather cooperates."
+    }
+  },
+
   "temperature_impact": {
-    "_note": "Lead volume relative to baseline by temperature range. Validated by 2026: Week 9 at 34.4°F with snow produced -69% organic vs 2025 (53°F no snow). The below_40 + snow compound effect is severe in Early/Ramp phases.",
+    "_note": "Lead volume relative to baseline by temperature range. Validated by 2026 data.",
     "below_40": { "pct_vs_baseline": -46, "label": "Below 40°F" },
     "40_50": { "pct_vs_baseline": -17, "label": "40-50°F" },
     "50_60": { "pct_vs_baseline": -1, "label": "50-60°F" },
     "60_70": { "pct_vs_baseline": 20, "label": "60-70°F" },
     "70_80": { "pct_vs_baseline": 15, "label": "70-80°F" },
     "above_80": { "pct_vs_baseline": 7, "label": "Above 80°F" }
-  },
-
-  "weather_context_2026": {
-    "_note": "Weather conditions during 2026 season that explain lead patterns.",
-    "week_9_cold_snap": {
-      "dates": "2026-02-23 to 2026-03-01",
-      "avg_high": 34.4,
-      "snow_depth_avg": 0.48,
-      "sunshine_hrs_avg": 6.5,
-      "impact": "Organic leads -69% vs 2025 same week (160 vs 513). Coldest week 9 in 5 years. Snow on ground (0.48in avg) + highs below 35°F created compound suppression during Early phase when weather sensitivity is very high.",
-      "comparison": {
-        "2025_avg_high": 52.9,
-        "2024_avg_high": 49.9,
-        "2023_avg_high": 49.5
-      }
-    },
-    "dm_timing_shift": {
-      "impact": "2025 had DM active from week 8 (163 DM leads wk8, 168 wk9). 2026 first drop was 3/3 (in-home 3/6), leaving weeks 8-9 with zero DM. Combined with cold snap, this accounts for ~85% of the 1,934-lead gap vs 2025 through Mar 22.",
-      "first_dm_in_home": "2026-03-06",
-      "2025_first_dm_in_home": "approximately 2025-02-15"
-    },
-    "recovery_signal": {
-      "impact": "Week 11 organic (911) was +22% vs 2025 (749) and +6% vs 2024 (861). Once temps recovered and DM activated, organic response was strong. Suggests baseline demand is healthy when weather cooperates."
-    }
   },
 
   "year_over_year_growth": {

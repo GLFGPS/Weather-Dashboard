@@ -7,6 +7,9 @@ const DOW_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DM_WAVES = modelCoefficients.dm_waves_2026?.waves || [];
 const DM_WAVE_CURVE = modelCoefficients.dm_waves_2026?.response_curve_pct?.weights || [];
 const DM_WAVE_WINDOW = 14;
+const DM_NEUTRAL_BASE = modelCoefficients.dm_waves_2026?.weather_neutral_base_per_400k || 602;
+const DM_WEATHER_SENSITIVITY = modelCoefficients.dm_weather_sensitivity?.sensitivity ?? 0.3;
+const DM_PHASE_MULTS = modelCoefficients.dm_phase_multipliers || { Early: 0.5, Ramp: 1.0, Peak: 1.65, Tail: 0.8 };
 
 const SEASON_PHASES = [
   { name: "Early", start: [2, 15], end: [3, 1], weatherSensitivity: "very high", niceUplift: 50, badDrag: -15 },
@@ -53,11 +56,12 @@ function getDayOfSeason(dateStr) {
   return Math.floor((d - feb15) / 86400000);
 }
 
-function computeWaveBasedDm(dateStr, weatherMultiplier) {
+function computeWaveBasedDm(dateStr, orgWeatherMultiplier) {
   if (!DM_WAVE_CURVE.length || !DM_WAVES.length) return null;
 
   const target = new Date(`${dateStr}T00:00:00`).getTime();
   const weightSum = DM_WAVE_CURVE.reduce((s, w) => s + w, 0);
+  const dmWeatherMult = 1 + (orgWeatherMultiplier - 1) * DM_WEATHER_SENSITIVITY;
   let dmTotal = 0;
   let activeWaveCount = 0;
 
@@ -67,10 +71,11 @@ function computeWaveBasedDm(dateStr, weatherMultiplier) {
     if (daysSinceInHome < 0 || daysSinceInHome >= DM_WAVE_WINDOW) continue;
 
     activeWaveCount += 1;
+    const wavePhaseMult = DM_PHASE_MULTS[wave.phase] ?? 1.0;
     const weight = DM_WAVE_CURVE[daysSinceInHome] ?? 0;
-    const expectedLeads = wave.expected_dm_leads || 608;
-    const rawLeads = (weight / weightSum) * expectedLeads;
-    dmTotal += rawLeads * weatherMultiplier;
+    const units = (wave.total_pieces || 400000) / 400000;
+    const rawLeads = (weight / weightSum) * DM_NEUTRAL_BASE * units * wavePhaseMult;
+    dmTotal += rawLeads * dmWeatherMult;
   }
 
   if (activeWaveCount === 0) return { dm: 0, activeWaves: 0, method: "wave-curve" };
