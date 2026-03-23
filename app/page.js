@@ -21,7 +21,6 @@ const FALLBACK_MARKETS = [
 ];
 
 const FOURTH_METRIC_OPTIONS = [
-  { key: "avgSnowDepth", label: "Avg Snow Depth", unit: "in", digits: 2 },
   { key: "avgPrecip", label: "Avg Precipitation", unit: "in", digits: 2 },
   { key: "avgHumidity", label: "Avg Humidity", unit: "%", digits: 0 },
   { key: "avgSnowfall", label: "Avg Snowfall", unit: "in", digits: 2 },
@@ -37,13 +36,13 @@ const CHART_MODES = [
 const WEATHER_LINE_OPTIONS = [
   { key: "avgTempMax", label: "Avg Temp Max" },
   { key: "avgUv", label: "Avg UV" },
-  { key: "avgSnowDepth", label: "Avg Snow Depth" },
+  { key: "avgPrecip", label: "Avg Precipitation" },
 ];
 
 const LAG_METRIC_OPTIONS = [
   { key: "avgTempMax", label: "Avg Temp Max" },
   { key: "avgUv", label: "Avg UV" },
-  { key: "avgSnowDepth", label: "Avg Snow Depth" },
+  { key: "avgPrecip", label: "Avg Precipitation" },
 ];
 
 const TREND_DAY_RANGE_START = "02-15";
@@ -146,7 +145,7 @@ export default function HomePage() {
   const [tableYear, setTableYear] = useState(null);
   const [weatherLineMetric, setWeatherLineMetric] = useState("avgTempMax");
   const [lagMetric, setLagMetric] = useState("avgTempMax");
-  const [fourthMetricKey, setFourthMetricKey] = useState("avgSnowDepth");
+  const [fourthMetricKey, setFourthMetricKey] = useState("avgPrecip");
 
   const [marketWeather, setMarketWeather] = useState(null);
   const [selectedWeather, setSelectedWeather] = useState(null);
@@ -302,6 +301,26 @@ export default function HomePage() {
     }
     return options;
   }, [priorityForecast]);
+  const fiveYearAvgHighByDayKey = useMemo(() => {
+    const map = new Map();
+    const excludeYear = tableYear || selectedYear;
+    for (const series of chartSeries) {
+      if (series.year === excludeYear) continue;
+      for (const point of series.points || []) {
+        if (point.weather?.avgTempMax == null) continue;
+        const existing = map.get(point.dayKey) || { sum: 0, count: 0 };
+        existing.sum += point.weather.avgTempMax;
+        existing.count += 1;
+        map.set(point.dayKey, existing);
+      }
+    }
+    const result = new Map();
+    for (const [dayKey, { sum, count }] of map.entries()) {
+      result.set(dayKey, count > 0 ? sum / count : null);
+    }
+    return result;
+  }, [chartSeries, tableYear, selectedYear]);
+
   const selectedForecastMarket =
     (priorityForecast?.marketForecasts || []).find((row) => row.marketName === forecastScope) ||
     null;
@@ -319,7 +338,7 @@ export default function HomePage() {
         avgMax: null,
         avgMin: null,
         avgPrecipProb: null,
-        avgSnowDepth: null,
+        fiveYearAvgHigh: null,
       };
     }
     const values = forecastPoints.reduce(
@@ -328,11 +347,12 @@ export default function HomePage() {
         if (Number.isFinite(Number(point.avgTempMin))) acc.min.push(Number(point.avgTempMin));
         if (Number.isFinite(Number(point.avgPrecipProb)))
           acc.precipProb.push(Number(point.avgPrecipProb));
-        if (Number.isFinite(Number(point.avgSnowDepth)))
-          acc.snowDepth.push(Number(point.avgSnowDepth));
+        const dayKey = point.date?.slice(5);
+        const fiveYrHigh = dayKey ? fiveYearAvgHighByDayKey.get(dayKey) : null;
+        if (fiveYrHigh !== null && fiveYrHigh !== undefined) acc.fiveYrHigh.push(fiveYrHigh);
         return acc;
       },
-      { max: [], min: [], precipProb: [], snowDepth: [] },
+      { max: [], min: [], precipProb: [], fiveYrHigh: [] },
     );
     const avg = (input) =>
       input.length ? input.reduce((sum, value) => sum + value, 0) / input.length : null;
@@ -340,9 +360,9 @@ export default function HomePage() {
       avgMax: avg(values.max),
       avgMin: avg(values.min),
       avgPrecipProb: avg(values.precipProb),
-      avgSnowDepth: avg(values.snowDepth),
+      fiveYearAvgHigh: avg(values.fiveYrHigh),
     };
-  }, [forecastPoints]);
+  }, [forecastPoints, fiveYearAvgHighByDayKey]);
 
   useEffect(() => {
     if (!forecastMarketOptions.some((option) => option.value === forecastScope)) {
@@ -714,7 +734,7 @@ export default function HomePage() {
         row[`leads_${series.year}`] = point.filteredLeads;
         row[`weather_avgTempMax_${series.year}`] = point.weather?.avgTempMax ?? null;
         row[`weather_avgUv_${series.year}`] = point.weather?.avgUv ?? null;
-        row[`weather_avgSnowDepth_${series.year}`] = point.weather?.avgSnowDepth ?? null;
+        row[`weather_avgPrecip_${series.year}`] = point.weather?.avgPrecip ?? null;
         map.set(point.dayKey, row);
       }
     }
@@ -827,8 +847,8 @@ export default function HomePage() {
                 <strong>{formatNumber(selectedWeather?.selectedDay?.uvindex, 1)}</strong>
               </li>
               <li>
-                <span>Snow Depth</span>
-                <strong>{formatNumber(selectedWeather?.selectedDay?.snowdepth, 2)} in</strong>
+                <span>5Y Avg High</span>
+                <strong>{formatTemp(selectedWeather?.sameDayFiveYear?.avgHigh, 0)}</strong>
               </li>
               <li>
                 <span>Precip</span>
@@ -1024,8 +1044,8 @@ export default function HomePage() {
                 <strong>{formatPercent(forecastSummary.avgPrecipProb, 0)}</strong>
               </article>
               <article className="forecast-mini-card">
-                <span>Projected Snow Depth</span>
-                <strong>{formatNumber(forecastSummary.avgSnowDepth, 2)} in</strong>
+                <span>5Y Avg High</span>
+                <strong>{formatTemp(forecastSummary.fiveYearAvgHigh, 0)}</strong>
               </article>
             </div>
 
@@ -1076,7 +1096,7 @@ export default function HomePage() {
                     <th>Avg Min Temp</th>
                     <th>Avg UV</th>
                     <th>Avg Precip Prob</th>
-                    <th>Projected Snow Depth</th>
+                    <th>5Y Avg High</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1087,7 +1107,7 @@ export default function HomePage() {
                       <td>{formatTemp(point.avgTempMin, 0)}</td>
                       <td>{formatNumber(point.avgUv, 1)}</td>
                       <td>{formatPercent(point.avgPrecipProb, 0)}</td>
-                      <td>{formatNumber(point.avgSnowDepth, 2)} in</td>
+                      <td>{formatTemp(fiveYearAvgHighByDayKey.get(point.date?.slice(5)), 0)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1299,7 +1319,7 @@ export default function HomePage() {
                   <th>Avg Max Temp ({weatherComparisonLabel})</th>
                   <th>Avg Min Temp ({weatherComparisonLabel})</th>
                   <th>Avg UV ({weatherComparisonLabel})</th>
-                  <th>Avg Snow Depth ({weatherComparisonLabel})</th>
+                  <th>5Y Avg High</th>
                 </tr>
               </thead>
               <tbody>
@@ -1319,8 +1339,7 @@ export default function HomePage() {
                       {compactDelta(market.yoy?.avgUv, 1, "", weatherComparisonLabel)}
                     </td>
                     <td>
-                      {formatYoY(market.yoy?.avgSnowDepth, 2, " in", weatherComparisonLabel).current} /{" "}
-                      {compactDelta(market.yoy?.avgSnowDepth, 2, " in", weatherComparisonLabel)}
+                      {formatTemp(market.yoy?.avgMaxTemp?.previous, 0)}
                     </td>
                   </tr>
                 ))}
@@ -1700,7 +1719,6 @@ export default function HomePage() {
                   <th>DM Mix</th>
                   <th>Selected Source Share</th>
                   <th>Avg Temp Max</th>
-                  <th>Avg Snow Depth</th>
                   <th>Avg Precip</th>
                 </tr>
               </thead>
@@ -1716,13 +1734,12 @@ export default function HomePage() {
                       <td>{formatPercent(row.directMailShare, 1)}</td>
                       <td>{formatPercent(row.selectedSourceShare, 1)}</td>
                       <td>{formatTemp(row.avgTempMax, 0)}</td>
-                      <td>{formatNumber(row.avgSnowDepth, 2)} in</td>
                       <td>{formatNumber(row.avgPrecip, 2)} in</td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={10}>No condition buckets available for this selection.</td>
+                    <td colSpan={9}>No condition buckets available for this selection.</td>
                   </tr>
                 )}
               </tbody>
@@ -1808,7 +1825,7 @@ export default function HomePage() {
                 <th>Lead Bar</th>
                 <th>Avg Temp Max</th>
                 <th>Avg UV</th>
-                <th>Snow Depth</th>
+                <th>5Y Avg High</th>
               </tr>
             </thead>
             <tbody>
@@ -1845,7 +1862,7 @@ export default function HomePage() {
                   </td>
                   <td>{formatTemp(point.weather?.avgTempMax, 0)}</td>
                   <td>{formatNumber(point.weather?.avgUv, 1)}</td>
-                  <td>{formatNumber(point.weather?.avgSnowDepth, 2)} in</td>
+                  <td>{formatTemp(fiveYearAvgHighByDayKey.get(point.dayKey), 0)}</td>
                 </tr>
                 );
               })}
