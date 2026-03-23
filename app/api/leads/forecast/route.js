@@ -4,6 +4,10 @@ import modelCoefficients from "../../../../analysis/model_coefficients.json" wit
 const DOW_NAMES = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 const DOW_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+const DM_WAVES = modelCoefficients.dm_waves_2026?.waves || [];
+const DM_WAVE_CURVE = modelCoefficients.dm_waves_2026?.response_curve_pct?.weights || [];
+const DM_WAVE_WINDOW = 14;
+
 const SEASON_PHASES = [
   { name: "Early", start: [2, 15], end: [3, 1], weatherSensitivity: "very high", niceUplift: 50, badDrag: -15 },
   { name: "Ramp", start: [3, 1], end: [3, 17], weatherSensitivity: "high", niceUplift: 34, badDrag: -16 },
@@ -49,6 +53,30 @@ function getDayOfSeason(dateStr) {
   return Math.floor((d - feb15) / 86400000);
 }
 
+function computeWaveBasedDm(dateStr, weatherMultiplier) {
+  if (!DM_WAVE_CURVE.length || !DM_WAVES.length) return null;
+
+  const target = new Date(`${dateStr}T00:00:00`).getTime();
+  const weightSum = DM_WAVE_CURVE.reduce((s, w) => s + w, 0);
+  let dmTotal = 0;
+  let activeWaveCount = 0;
+
+  for (const wave of DM_WAVES) {
+    const inHome = new Date(`${wave.in_home_start}T00:00:00`).getTime();
+    const daysSinceInHome = Math.round((target - inHome) / 86400000);
+    if (daysSinceInHome < 0 || daysSinceInHome >= DM_WAVE_WINDOW) continue;
+
+    activeWaveCount += 1;
+    const weight = DM_WAVE_CURVE[daysSinceInHome] ?? 0;
+    const expectedLeads = wave.expected_dm_leads || 608;
+    const rawLeads = (weight / weightSum) * expectedLeads;
+    dmTotal += rawLeads * weatherMultiplier;
+  }
+
+  if (activeWaveCount === 0) return { dm: 0, activeWaves: 0, method: "wave-curve" };
+  return { dm: Math.round(dmTotal), activeWaves: activeWaveCount, method: "wave-curve" };
+}
+
 function forecastDay({ date, weather, dmInHome, growthPct }) {
   const d = new Date(`${date}T00:00:00`);
   const jsDow = d.getDay();
@@ -66,9 +94,6 @@ function forecastDay({ date, weather, dmInHome, growthPct }) {
       message: "Date is outside lawn season (weeks 7-19, ~Feb 15 - May 10)",
     };
   }
-
-  const dmAddon = modelCoefficients.dm_addon_weekly[weekStr] ?? 0;
-  const baseBeforeDow = dmInHome ? organicBaseline + dmAddon : organicBaseline;
 
   const growthMultiplier = 1 + (growthPct || 0) / 100;
   const dowMultiplier = modelCoefficients.dow_multipliers[dowName] ?? 1.0;
@@ -89,9 +114,29 @@ function forecastDay({ date, weather, dmInHome, growthPct }) {
     weatherLabel = weatherInfo.label;
   }
 
-  const predicted = Math.round(baseBeforeDow * dowMultiplier * weatherMultiplier * growthMultiplier);
+  let dmAddon = 0;
+  let dmMethod = "none";
+  let activeWaves = 0;
+
+  if (dmInHome) {
+    const waveResult = computeWaveBasedDm(date, weatherMultiplier);
+    if (waveResult && waveResult.activeWaves > 0) {
+      dmAddon = waveResult.dm;
+      dmMethod = waveResult.method;
+      activeWaves = waveResult.activeWaves;
+    } else {
+      const legacyAddon = modelCoefficients.dm_addon_weekly[weekStr] ?? 0;
+      dmAddon = Math.round(legacyAddon * dowMultiplier * weatherMultiplier * growthMultiplier);
+      dmMethod = "legacy-weekly";
+    }
+  }
+
+  const organicPredicted = Math.round(organicBaseline * dowMultiplier * weatherMultiplier * growthMultiplier);
+  const dmPredicted = Math.round(dmAddon * growthMultiplier);
+  const totalPredicted = organicPredicted + dmPredicted;
+
   const weatherUpliftPct = Math.round((weatherMultiplier - 1) * 100);
-  const dmPct = dmInHome && organicBaseline > 0 ? Math.round((dmAddon / organicBaseline) * 100) : 0;
+  const dmPct = dmInHome && organicPredicted > 0 ? Math.round((dmPredicted / organicPredicted) * 100) : 0;
   const phase = getSeasonPhase(date);
 
   return {
@@ -102,8 +147,8 @@ function forecastDay({ date, weather, dmInHome, growthPct }) {
     dayOfSeason,
     inSeason: true,
     organicBaseline: Math.round(organicBaseline * growthMultiplier),
-    dmAddon: dmInHome ? Math.round(dmAddon * growthMultiplier) : 0,
-    seasonalBaseline: Math.round(baseBeforeDow * growthMultiplier),
+    dmAddon: dmPredicted,
+    seasonalBaseline: Math.round(organicBaseline * growthMultiplier) + dmPredicted,
     dowMultiplier: Math.round(dowMultiplier * 100) / 100,
     weatherCondition: weatherLabel,
     weatherKey: hasWeather ? weatherKey : null,
@@ -111,7 +156,9 @@ function forecastDay({ date, weather, dmInHome, growthPct }) {
     weatherUpliftPct,
     dmInHome: !!dmInHome,
     dmPct,
-    predictedLeads: predicted,
+    dmMethod,
+    activeWaves,
+    predictedLeads: totalPredicted,
     growthPct: growthPct || 0,
     phase: phase ? {
       name: phase.name,
@@ -131,6 +178,7 @@ function buildSeasonalCurve(year, growthPct, dmInHome) {
   const growthMultiplier = 1 + (growthPct || 0) / 100;
   const curve = [];
   const feb15 = new Date(year, 1, 15);
+  const satMult = modelCoefficients.dow_multipliers.saturday ?? 0.45;
 
   for (let dayOffset = 0; dayOffset <= 84; dayOffset++) {
     const d = new Date(feb15);
@@ -141,7 +189,16 @@ function buildSeasonalCurve(year, growthPct, dmInHome) {
     const organicBaseline = modelCoefficients.seasonal_baseline_weekly[weekStr] ?? null;
     if (organicBaseline === null) continue;
 
-    const dmAddon = dmInHome ? (modelCoefficients.dm_addon_weekly[weekStr] ?? 0) : 0;
+    let dmAddon = 0;
+    if (dmInHome) {
+      const waveResult = computeWaveBasedDm(dateStr, 1.0);
+      if (waveResult && waveResult.activeWaves > 0) {
+        dmAddon = waveResult.dm;
+      } else {
+        dmAddon = modelCoefficients.dm_addon_weekly[weekStr] ?? 0;
+      }
+    }
+
     const base = organicBaseline + dmAddon;
     const month = d.getMonth() + 1;
     const day = d.getDate();
@@ -152,7 +209,7 @@ function buildSeasonalCurve(year, growthPct, dmInHome) {
       date: dateStr,
       dayOfSeason: dayOffset,
       weekdayBaseline: Math.round(base * growthMultiplier),
-      saturdayBaseline: Math.round(base * (modelCoefficients.dow_multipliers.saturday ?? 0.37) * growthMultiplier),
+      saturdayBaseline: Math.round((organicBaseline * satMult + (dmInHome ? dmAddon * satMult : 0)) * growthMultiplier),
     });
   }
   return curve;
@@ -209,11 +266,12 @@ export async function GET(request) {
   return NextResponse.json({
     forecasts,
     model: {
-      description: "Lawn lead forecast based on 5 years of historical data (2021-2025)",
-      factors: "organic_baseline + dm_addon + dow + weather + growth",
+      description: "Lawn lead forecast based on 5 years of historical data (2021-2025), updated with 2026 actuals through 3/22. DM uses drop-date-aware response curve when 2026 drops are known.",
+      factors: "organic_baseline + dm_drop_curve + dow + weather + growth",
       r_squared: 0.98,
       growthPct,
       dmInHome,
+      dmMethod: DM_WAVES.length ? "wave-curve (2026 schedule)" : "legacy-weekly",
     },
   });
 }
