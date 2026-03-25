@@ -7,6 +7,7 @@ import {
   ComposedChart,
   Legend,
   Line,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -178,6 +179,9 @@ export default function HomePage() {
   const [leadForecast, setLeadForecast] = useState(null);
   const [seasonalCurve, setSeasonalCurve] = useState(null);
   const [loadingLeadForecast, setLoadingLeadForecast] = useState(true);
+
+  const [projectionLog, setProjectionLog] = useState(null);
+  const [loadingProjectionLog, setLoadingProjectionLog] = useState(true);
 
   const fourthMetric = useMemo(
     () =>
@@ -681,6 +685,44 @@ export default function HomePage() {
     loadCurve();
     return () => { active = false; };
   }, [selectedYear, dmInHome]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadProjectionLog() {
+      setLoadingProjectionLog(true);
+      try {
+        const resp = await fetch("/api/leads/projection-log?start=2026-02-15", { cache: "no-store" });
+        const payload = await resp.json();
+        if (active) setProjectionLog(payload);
+      } catch {
+        if (active) setProjectionLog(null);
+      } finally {
+        if (active) setLoadingProjectionLog(false);
+      }
+    }
+    loadProjectionLog();
+    return () => { active = false; };
+  }, [leadsOverview]);
+
+  const projectionChartData = useMemo(() => {
+    if (!projectionLog?.log?.length) return [];
+    return projectionLog.log
+      .filter((row) => row.actual_total != null && row.projected_total != null)
+      .map((row) => {
+        const d = new Date(`${row.date}T00:00:00`);
+        return {
+          date: row.date,
+          label: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+          dow: row.dow,
+          projected: row.projected_total,
+          actual: row.actual_total,
+          error: row.error,
+          errorPct: Number(row.error_pct) || 0,
+          phase: row.season_phase,
+          weather: row.weather_condition,
+        };
+      });
+  }, [projectionLog]);
 
   const forecastWeatherBadge = useCallback((point) => {
     if (!point?.weather) return null;
@@ -1263,6 +1305,80 @@ export default function HomePage() {
             One thing to flag: since we are mailing more each year, the 5-year DM average may understate what 2026 DM will actually deliver. The +10% growth target is baked into all baselines. DM forecasting now uses the actual 2026 drop schedule with wave-specific response curves.
           </p>
         </div>
+
+        {!loadingProjectionLog && projectionChartData.length > 0 && (
+          <div className="projection-accuracy-section" style={{ marginTop: "1.5rem", borderTop: "1px solid #e0e0e0", paddingTop: "1.5rem" }}>
+            <div className="trend-header">
+              <h2 style={{ fontSize: "1.1rem" }}>Forecast Accuracy Tracker</h2>
+              <div style={{ display: "flex", gap: "1rem", fontSize: "0.85rem" }}>
+                <span><strong>MAE:</strong> {projectionLog?.mae ?? "--"} leads</span>
+                <span><strong>Avg Error:</strong> {projectionLog?.avgAbsErrorPct ?? "--"}%</span>
+                <span><strong>Days Tracked:</strong> {projectionLog?.entriesWithActuals ?? 0}</span>
+              </div>
+            </div>
+
+            <div className="chart-wrap" style={{ marginTop: "0.75rem" }}>
+              <ResponsiveContainer width="100%" height={280}>
+                <ComposedChart data={projectionChartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="label" fontSize={11} />
+                  <YAxis yAxisId="leads" />
+                  <YAxis yAxisId="error" orientation="right" />
+                  <Tooltip
+                    formatter={(value, name) => {
+                      if (name === "Error") return [`${value >= 0 ? "+" : ""}${value}`, name];
+                      return [value, name];
+                    }}
+                  />
+                  <Legend />
+                  <Bar yAxisId="leads" dataKey="actual" name="Actual" fill="#118257" barSize={10} />
+                  <Line yAxisId="leads" type="monotone" dataKey="projected" name="Projected" stroke="#1f4f86" strokeWidth={2.5} dot={{ r: 3 }} />
+                  <ReferenceLine yAxisId="error" y={0} stroke="#999" strokeDasharray="3 3" />
+                  <Line yAxisId="error" type="monotone" dataKey="error" name="Error" stroke="#da3f5f" strokeWidth={1.5} dot={{ r: 2 }} strokeDasharray="4 2" />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="table-wrap" style={{ marginTop: "0.75rem" }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>DOW</th>
+                    <th>Phase</th>
+                    <th>Weather</th>
+                    <th>Projected</th>
+                    <th>Actual</th>
+                    <th>Error</th>
+                    <th>Error %</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {projectionChartData.map((row) => {
+                    const absErr = Math.abs(row.errorPct);
+                    const errColor = absErr <= 5 ? "#118257" : absErr <= 15 ? "#f08a24" : "#da3f5f";
+                    return (
+                      <tr key={row.date}>
+                        <td>{row.label}</td>
+                        <td style={{ textTransform: "capitalize" }}>{row.dow}</td>
+                        <td>{row.phase || "--"}</td>
+                        <td style={{ textTransform: "capitalize" }}>{(row.weather || "").replace(/_/g, " ")}</td>
+                        <td>{row.projected}</td>
+                        <td><strong>{row.actual}</strong></td>
+                        <td style={{ color: errColor, fontWeight: 600 }}>
+                          {row.error >= 0 ? "+" : ""}{row.error}
+                        </td>
+                        <td style={{ color: errColor, fontWeight: 600 }}>
+                          {row.errorPct >= 0 ? "+" : ""}{row.errorPct}%
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="panel">
