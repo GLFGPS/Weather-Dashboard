@@ -11,6 +11,27 @@ const DM_BASE_PER_100K = modelCoefficients.dm_drops_2026?.weather_neutral_base_p
 const DM_WEATHER_SENSITIVITY = modelCoefficients.dm_weather_sensitivity?.sensitivity ?? 0.3;
 const DM_PHASE_MULTS = modelCoefficients.dm_phase_multipliers || { Early: 0.5, Ramp: 1.0, Peak: 1.65, Tail: 0.8 };
 
+function groupDropsIntoWaves(drops) {
+  if (!drops.length) return [];
+  const sorted = [...drops].sort((a, b) => a.in_home_date.localeCompare(b.in_home_date));
+  const waves = [];
+  let current = { in_home_start: sorted[0].in_home_date, pieces: sorted[0].pieces, phase: sorted[0].phase, drops: [sorted[0]] };
+  for (let i = 1; i < sorted.length; i++) {
+    const drop = sorted[i];
+    const prevDate = new Date(`${current.in_home_start}T00:00:00`).getTime();
+    const thisDate = new Date(`${drop.in_home_date}T00:00:00`).getTime();
+    if (Math.round((thisDate - prevDate) / 86400000) <= 4) {
+      current.pieces += drop.pieces;
+      current.drops.push(drop);
+    } else {
+      waves.push(current);
+      current = { in_home_start: drop.in_home_date, pieces: drop.pieces, phase: drop.phase, drops: [drop] };
+    }
+  }
+  waves.push(current);
+  return waves;
+}
+
 const SEASON_PHASES = [
   { name: "Early", start: [2, 15], end: [3, 1], weatherSensitivity: "very high", niceUplift: 50, badDrag: -15 },
   { name: "Ramp", start: [3, 1], end: [3, 17], weatherSensitivity: "high", niceUplift: 34, badDrag: -16 },
@@ -60,22 +81,32 @@ function computeDropBasedDm(dateStr, orgWeatherMultiplier, drops) {
   const dropList = drops || DM_DROPS_DEFAULT;
   if (!DM_CURVE.length || !dropList.length) return null;
 
+  const normalized = dropList.map((d) => ({
+    ...d,
+    in_home_date: d.in_home_date || (() => {
+      const dt = new Date(`${d.drop_date}T00:00:00`);
+      dt.setDate(dt.getDate() + 3);
+      return dt.toISOString().slice(0, 10);
+    })(),
+  }));
+
+  const waves = groupDropsIntoWaves(normalized);
   const target = new Date(`${dateStr}T00:00:00`).getTime();
   const weightSum = DM_CURVE.reduce((s, w) => s + w, 0);
   const dmWeatherMult = 1 + (orgWeatherMultiplier - 1) * DM_WEATHER_SENSITIVITY;
   let dmTotal = 0;
   let activeDropCount = 0;
 
-  for (const drop of dropList) {
-    const inHome = new Date(`${drop.in_home_date}T00:00:00`).getTime();
+  for (const wave of waves) {
+    const inHome = new Date(`${wave.in_home_start}T00:00:00`).getTime();
     const daysSinceInHome = Math.round((target - inHome) / 86400000);
     if (daysSinceInHome < 0 || daysSinceInHome >= DM_WINDOW) continue;
 
-    activeDropCount += 1;
-    const dropPhase = drop.phase || getSeasonPhase(drop.in_home_date)?.name || "Peak";
-    const phaseMult = DM_PHASE_MULTS[dropPhase] ?? 1.0;
+    activeDropCount += wave.drops.length;
+    const wavePhase = wave.phase || getSeasonPhase(wave.in_home_start)?.name || "Peak";
+    const phaseMult = DM_PHASE_MULTS[wavePhase] ?? 1.0;
     const weight = DM_CURVE[daysSinceInHome] ?? 0;
-    const units = (drop.pieces || 200000) / 100000;
+    const units = wave.pieces / 100000;
     dmTotal += (weight / weightSum) * DM_BASE_PER_100K * units * phaseMult * dmWeatherMult;
   }
 
