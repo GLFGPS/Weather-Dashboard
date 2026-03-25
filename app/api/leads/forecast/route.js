@@ -4,10 +4,10 @@ import modelCoefficients from "../../../../analysis/model_coefficients.json" wit
 const DOW_NAMES = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 const DOW_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-const DM_WAVES = modelCoefficients.dm_waves_2026?.waves || [];
-const DM_WAVE_CURVE = modelCoefficients.dm_waves_2026?.response_curve_pct?.weights || [];
-const DM_WAVE_WINDOW = 14;
-const DM_NEUTRAL_BASE = modelCoefficients.dm_waves_2026?.weather_neutral_base_per_400k || 602;
+const DM_DROPS_DEFAULT = modelCoefficients.dm_drops_2026?.drops || [];
+const DM_CURVE = modelCoefficients.dm_drops_2026?.response_curve_pct?.weights || [];
+const DM_WINDOW = 14;
+const DM_BASE_PER_100K = modelCoefficients.dm_drops_2026?.weather_neutral_base_per_100k || 165;
 const DM_WEATHER_SENSITIVITY = modelCoefficients.dm_weather_sensitivity?.sensitivity ?? 0.3;
 const DM_PHASE_MULTS = modelCoefficients.dm_phase_multipliers || { Early: 0.5, Ramp: 1.0, Peak: 1.65, Tail: 0.8 };
 
@@ -56,33 +56,34 @@ function getDayOfSeason(dateStr) {
   return Math.floor((d - feb15) / 86400000);
 }
 
-function computeWaveBasedDm(dateStr, orgWeatherMultiplier) {
-  if (!DM_WAVE_CURVE.length || !DM_WAVES.length) return null;
+function computeDropBasedDm(dateStr, orgWeatherMultiplier, drops) {
+  const dropList = drops || DM_DROPS_DEFAULT;
+  if (!DM_CURVE.length || !dropList.length) return null;
 
   const target = new Date(`${dateStr}T00:00:00`).getTime();
-  const weightSum = DM_WAVE_CURVE.reduce((s, w) => s + w, 0);
+  const weightSum = DM_CURVE.reduce((s, w) => s + w, 0);
   const dmWeatherMult = 1 + (orgWeatherMultiplier - 1) * DM_WEATHER_SENSITIVITY;
   let dmTotal = 0;
-  let activeWaveCount = 0;
+  let activeDropCount = 0;
 
-  for (const wave of DM_WAVES) {
-    const inHome = new Date(`${wave.in_home_start}T00:00:00`).getTime();
+  for (const drop of dropList) {
+    const inHome = new Date(`${drop.in_home_date}T00:00:00`).getTime();
     const daysSinceInHome = Math.round((target - inHome) / 86400000);
-    if (daysSinceInHome < 0 || daysSinceInHome >= DM_WAVE_WINDOW) continue;
+    if (daysSinceInHome < 0 || daysSinceInHome >= DM_WINDOW) continue;
 
-    activeWaveCount += 1;
-    const wavePhaseMult = DM_PHASE_MULTS[wave.phase] ?? 1.0;
-    const weight = DM_WAVE_CURVE[daysSinceInHome] ?? 0;
-    const units = (wave.total_pieces || 400000) / 400000;
-    const rawLeads = (weight / weightSum) * DM_NEUTRAL_BASE * units * wavePhaseMult;
-    dmTotal += rawLeads * dmWeatherMult;
+    activeDropCount += 1;
+    const dropPhase = drop.phase || getSeasonPhase(drop.in_home_date)?.name || "Peak";
+    const phaseMult = DM_PHASE_MULTS[dropPhase] ?? 1.0;
+    const weight = DM_CURVE[daysSinceInHome] ?? 0;
+    const units = (drop.pieces || 200000) / 100000;
+    dmTotal += (weight / weightSum) * DM_BASE_PER_100K * units * phaseMult * dmWeatherMult;
   }
 
-  if (activeWaveCount === 0) return { dm: 0, activeWaves: 0, method: "wave-curve" };
-  return { dm: Math.round(dmTotal), activeWaves: activeWaveCount, method: "wave-curve" };
+  if (activeDropCount === 0) return { dm: 0, activeDrops: 0, method: "drop-curve" };
+  return { dm: Math.round(dmTotal), activeDrops: activeDropCount, method: "drop-curve" };
 }
 
-function forecastDay({ date, weather, dmInHome }) {
+function forecastDay({ date, weather, dmInHome, drops }) {
   const d = new Date(`${date}T00:00:00`);
   const jsDow = d.getDay();
   const dowName = DOW_NAMES[jsDow];
@@ -120,15 +121,15 @@ function forecastDay({ date, weather, dmInHome }) {
 
   let dmAddon = 0;
   let dmMethod = "none";
-  let activeWaves = 0;
+  let activeDrops = 0;
 
-  if (dmInHome) {
-    const waveResult = computeWaveBasedDm(date, weatherMultiplier);
-    if (waveResult && waveResult.activeWaves > 0) {
-      dmAddon = waveResult.dm;
-      dmMethod = waveResult.method;
-      activeWaves = waveResult.activeWaves;
-    } else {
+  if (dmInHome !== false) {
+    const dropResult = computeDropBasedDm(date, weatherMultiplier, drops);
+    if (dropResult && dropResult.activeDrops > 0) {
+      dmAddon = dropResult.dm;
+      dmMethod = dropResult.method;
+      activeDrops = dropResult.activeDrops;
+    } else if (dmInHome) {
       const legacyAddon = modelCoefficients.dm_addon_weekly[weekStr] ?? 0;
       dmAddon = Math.round(legacyAddon * dowMultiplier * weatherMultiplier);
       dmMethod = "legacy-weekly";
@@ -161,7 +162,7 @@ function forecastDay({ date, weather, dmInHome }) {
     dmInHome: !!dmInHome,
     dmPct,
     dmMethod,
-    activeWaves,
+    activeDrops,
     predictedLeads: totalPredicted,
     growthPct: 10,
     phase: phase ? {
@@ -178,7 +179,7 @@ function forecastDay({ date, weather, dmInHome }) {
   };
 }
 
-function buildSeasonalCurve(year, dmInHome) {
+function buildSeasonalCurve(year, dmInHome, drops) {
   const curve = [];
   const feb15 = new Date(year, 1, 15);
   const satMult = modelCoefficients.dow_multipliers.saturday ?? 0.45;
@@ -194,9 +195,9 @@ function buildSeasonalCurve(year, dmInHome) {
 
     let dmAddon = 0;
     if (dmInHome) {
-      const waveResult = computeWaveBasedDm(dateStr, 1.0);
-      if (waveResult && waveResult.activeWaves > 0) {
-        dmAddon = waveResult.dm;
+      const dropResult = computeDropBasedDm(dateStr, 1.0, drops);
+      if (dropResult && dropResult.activeDrops > 0) {
+        dmAddon = dropResult.dm;
       } else {
         dmAddon = modelCoefficients.dm_addon_weekly[weekStr] ?? 0;
       }
@@ -218,13 +219,36 @@ function buildSeasonalCurve(year, dmInHome) {
   return curve;
 }
 
+function parseDropsParam(raw) {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    return parsed
+      .filter((d) => d.drop_date && d.pieces)
+      .map((d) => ({
+        drop_date: d.drop_date,
+        in_home_date: d.in_home_date || (() => {
+          const dt = new Date(`${d.drop_date}T00:00:00`);
+          dt.setDate(dt.getDate() + 3);
+          return dt.toISOString().slice(0, 10);
+        })(),
+        pieces: Number(d.pieces) || 200000,
+        phase: d.phase || null,
+      }));
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
-  const dmInHome = searchParams.get("dm_in_home") === "1";
+  const dmInHome = searchParams.get("dm_in_home") !== "0";
+  const customDrops = parseDropsParam(searchParams.get("drops"));
 
   if (searchParams.has("seasonal_curve")) {
     const year = Number(searchParams.get("seasonal_curve")) || new Date().getFullYear();
-    const curve = buildSeasonalCurve(year, dmInHome);
+    const curve = buildSeasonalCurve(year, dmInHome, customDrops);
     return NextResponse.json({
       year, growthPct: 10, dmInHome, curve,
       dowMultipliers: modelCoefficients.dow_multipliers,
@@ -261,6 +285,7 @@ export async function GET(request) {
       date: d,
       weather: hasWeather ? weather : null,
       dmInHome,
+      drops: customDrops,
     }),
   );
 
@@ -272,7 +297,8 @@ export async function GET(request) {
       r_squared: 0.98,
       growthPct: 10,
       dmInHome,
-      dmMethod: DM_WAVES.length ? "wave-curve (2026 schedule)" : "legacy-weekly",
+      dmMethod: customDrops ? "custom-drops" : DM_DROPS_DEFAULT.length ? "drop-curve (2026 schedule)" : "legacy-weekly",
+      dropCount: customDrops ? customDrops.length : DM_DROPS_DEFAULT.length,
     },
   });
 }

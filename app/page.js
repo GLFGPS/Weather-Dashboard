@@ -175,7 +175,16 @@ export default function HomePage() {
 
   const growthPct = 10;
   const [forecastDate, setForecastDate] = useState("");
-  const [dmInHome, setDmInHome] = useState(false);
+  const [dmDrops, setDmDrops] = useState([
+    { drop_date: "2026-03-03", pieces: 200000 },
+    { drop_date: "2026-03-05", pieces: 200000 },
+    { drop_date: "2026-03-17", pieces: 200000 },
+    { drop_date: "2026-03-19", pieces: 200000 },
+    { drop_date: "2026-03-25", pieces: 243643 },
+    { drop_date: "2026-03-30", pieces: 182647 },
+  ]);
+  const [newDropDate, setNewDropDate] = useState("");
+  const [newDropPieces, setNewDropPieces] = useState("");
   const [leadForecast, setLeadForecast] = useState(null);
   const [seasonalCurve, setSeasonalCurve] = useState(null);
   const [loadingLeadForecast, setLoadingLeadForecast] = useState(true);
@@ -646,7 +655,7 @@ export default function HomePage() {
       try {
         const dateToForecast = forecastDate || forecastDateMin;
         const params = new URLSearchParams({ date: dateToForecast });
-        if (dmInHome) params.set("dm_in_home", "1");
+        if (dmDrops.length) params.set("drops", JSON.stringify(dmDrops));
 
         const forecastDay = (priorityForecast?.forecast || []).find((p) => p.date === dateToForecast);
         if (forecastDay) {
@@ -666,7 +675,7 @@ export default function HomePage() {
     }
     loadLeadForecast();
     return () => { active = false; };
-  }, [forecastDate, forecastDateMin, priorityForecast, dmInHome]);
+  }, [forecastDate, forecastDateMin, priorityForecast, dmDrops]);
 
   useEffect(() => {
     let active = true;
@@ -674,7 +683,7 @@ export default function HomePage() {
       try {
         const year = selectedYear || new Date().getFullYear();
         const params = new URLSearchParams({ seasonal_curve: String(year) });
-        if (dmInHome) params.set("dm_in_home", "1");
+        if (dmDrops.length) params.set("drops", JSON.stringify(dmDrops));
         const resp = await fetch(`/api/leads/forecast?${params.toString()}`, { cache: "no-store" });
         const payload = await resp.json();
         if (active) setSeasonalCurve(payload);
@@ -684,7 +693,7 @@ export default function HomePage() {
     }
     loadCurve();
     return () => { active = false; };
-  }, [selectedYear, dmInHome]);
+  }, [selectedYear, dmDrops]);
 
   useEffect(() => {
     let active = true;
@@ -858,7 +867,7 @@ export default function HomePage() {
           <div className="dashboard-summary">
             <p><strong>What the data is.</strong> Lead and weather data from 2021-2026 lawn seasons (Feb 15 - May 10) across all markets in PA, NJ, and DE. The forecast is up to 15 days, updating daily.</p>
             <p><strong>Adjusting for your scenario.</strong> The Actual + 7 Day Forecast is for the Selected Market. The forecast blend below it is a blend of 4 markets with an option to view each one individually.</p>
-            <p><strong>What the lead forecast does.</strong> The Lead Forecast uses 5 years of historical leads + real-time weather forecasts + the actual 2026 DM drop schedule to project daily lead volume. +10% YoY growth is baked in. Toggle DM In Home to see the DM wave impact.</p>
+            <p><strong>What the lead forecast does.</strong> The Lead Forecast uses 5 years of historical leads + real-time weather forecasts + your DM drop schedule to project daily lead volume. +10% YoY growth is baked in. Add or remove drops in the schedule manager to see how timing and volume affect projections.</p>
           </div>
         </article>
 
@@ -1172,16 +1181,9 @@ export default function HomePage() {
                   onChange={(event) => setForecastDate(event.target.value)}
                 />
               </label>
-              <label className="dm-toggle-label">
-                DM In Home
-                <button
-                  type="button"
-                  className={`dm-toggle ${dmInHome ? "dm-toggle-on" : ""}`}
-                  onClick={() => setDmInHome((v) => !v)}
-                >
-                  {dmInHome ? "Yes — DM Drop Active" : "No DM Drop"}
-                </button>
-              </label>
+              <div className="dm-schedule-compact">
+                <span style={{ fontSize: "0.8rem", fontWeight: 600 }}>{dmDrops.length} DM Drop{dmDrops.length !== 1 ? "s" : ""} Scheduled</span>
+              </div>
             </div>
 
             {loadingLeadForecast ? (
@@ -1199,10 +1201,10 @@ export default function HomePage() {
                 </div>
                 <div className="prediction-factors">
                   <div className="factor-pill factor-season">
-                    <span className="factor-name">{leadForecast.dmInHome ? "Historical Avg + DM" : "Historical Avg"}</span>
+                    <span className="factor-name">{leadForecast.dmAddon > 0 ? "Organic + DM" : "Organic Baseline"}</span>
                     <span className="factor-value">
                       {leadForecast.seasonalBaseline}
-                      {leadForecast.dmInHome && leadForecast.dmAddon > 0 && (
+                      {leadForecast.dmAddon > 0 && (
                         <span style={{ fontSize: "0.72rem", fontWeight: 400, color: "#5c7184" }}>
                           {" "}({leadForecast.organicBaseline} + {leadForecast.dmAddon})
                         </span>
@@ -1261,6 +1263,79 @@ export default function HomePage() {
               )}
               <p className="subtle" style={{ marginTop: "0.5rem" }}>+10% YoY growth target baked into all baselines</p>
               <p className="subtle">R² = 0.98 &middot; Trained on seasonal curve + day of week + weather conditions</p>
+            </div>
+
+            <div className="dm-drop-manager" style={{ marginTop: "1rem", borderTop: "1px solid #e0e0e0", paddingTop: "0.75rem" }}>
+              <h3 style={{ fontSize: "0.9rem", marginBottom: "0.5rem" }}>DM Drop Schedule</h3>
+              <div style={{ maxHeight: "180px", overflowY: "auto", fontSize: "0.78rem" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid #e0e0e0" }}>
+                      <th style={{ textAlign: "left", padding: "2px 4px" }}>Drop</th>
+                      <th style={{ textAlign: "left", padding: "2px 4px" }}>In-Home</th>
+                      <th style={{ textAlign: "right", padding: "2px 4px" }}>Pieces</th>
+                      <th style={{ width: "28px" }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dmDrops.map((drop, idx) => {
+                      const ih = new Date(`${drop.drop_date}T00:00:00`);
+                      ih.setDate(ih.getDate() + 3);
+                      const inHome = ih.toISOString().slice(0, 10);
+                      return (
+                        <tr key={`${drop.drop_date}-${idx}`} style={{ borderBottom: "1px solid #f0f0f0" }}>
+                          <td style={{ padding: "2px 4px" }}>{formatDateLabel(drop.drop_date)}</td>
+                          <td style={{ padding: "2px 4px" }}>{formatDateLabel(inHome)}</td>
+                          <td style={{ textAlign: "right", padding: "2px 4px" }}>{Number(drop.pieces).toLocaleString()}</td>
+                          <td style={{ padding: "2px 4px", textAlign: "center" }}>
+                            <button
+                              type="button"
+                              onClick={() => setDmDrops((prev) => prev.filter((_, i) => i !== idx))}
+                              style={{ background: "none", border: "none", color: "#da3f5f", cursor: "pointer", fontSize: "0.85rem", fontWeight: 700, padding: "0 4px" }}
+                            >
+                              ×
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ display: "flex", gap: "0.4rem", marginTop: "0.5rem", alignItems: "flex-end" }}>
+                <label style={{ fontSize: "0.75rem", flex: 1 }}>
+                  Drop Date
+                  <input
+                    type="date"
+                    value={newDropDate}
+                    onChange={(e) => setNewDropDate(e.target.value)}
+                    style={{ width: "100%", fontSize: "0.78rem", padding: "3px 4px" }}
+                  />
+                </label>
+                <label style={{ fontSize: "0.75rem", flex: 1 }}>
+                  Pieces
+                  <input
+                    type="number"
+                    value={newDropPieces}
+                    onChange={(e) => setNewDropPieces(e.target.value)}
+                    placeholder="200000"
+                    style={{ width: "100%", fontSize: "0.78rem", padding: "3px 4px" }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!newDropDate || !newDropPieces) return;
+                    setDmDrops((prev) => [...prev, { drop_date: newDropDate, pieces: Number(newDropPieces) }].sort((a, b) => a.drop_date.localeCompare(b.drop_date)));
+                    setNewDropDate("");
+                    setNewDropPieces("");
+                  }}
+                  style={{ fontSize: "0.78rem", padding: "4px 10px", whiteSpace: "nowrap", background: "#118257", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                >
+                  Add Drop
+                </button>
+              </div>
+              <p className="subtle" style={{ fontSize: "0.7rem", marginTop: "0.3rem" }}>In-home = drop date + 3 days. Response curve runs 14 days from in-home.</p>
             </div>
           </div>
         </div>
