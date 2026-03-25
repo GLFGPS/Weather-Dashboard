@@ -40,42 +40,42 @@
   },
 
   "seasonal_baseline_weekly": {
-    "_note": "ORGANIC-ONLY weekday baseline (excludes DM). 5Y average. Apply DOW and weather multipliers on top.",
-    "7": 18,
-    "8": 37,
-    "9": 56,
-    "10": 92,
-    "11": 108,
-    "12": 117,
-    "13": 126,
-    "14": 115,
-    "15": 150,
-    "16": 135,
-    "17": 117,
-    "18": 85,
-    "19": 53
+    "_note": "ORGANIC-ONLY weekday baseline (excludes DM). 5Y average with +10% YoY growth baked in (2026 target). Apply DOW and weather multipliers on top. No separate growth adjustment needed.",
+    "7": 20,
+    "8": 41,
+    "9": 62,
+    "10": 101,
+    "11": 119,
+    "12": 129,
+    "13": 139,
+    "14": 127,
+    "15": 165,
+    "16": 149,
+    "17": 129,
+    "18": 94,
+    "19": 58
   },
 
   "dm_addon_weekly": {
-    "_note": "LEGACY fallback: Average DM leads per weekday when mail is in home (5Y historical average). Used when no specific wave data is available for a date. Superseded by dm_waves_2026 + dm_phase_multipliers for dates with known drop schedules.",
+    "_note": "LEGACY fallback: Average DM leads per weekday when mail is in home (5Y historical average + 10% growth baked in). Used when no specific wave data is available for a date. Superseded by dm_waves_2026 + dm_phase_multipliers for dates with known drop schedules.",
     "7": 1,
-    "8": 29,
-    "9": 35,
-    "10": 45,
-    "11": 50,
-    "12": 112,
-    "13": 69,
-    "14": 83,
-    "15": 60,
-    "16": 28,
-    "17": 17,
-    "18": 10,
-    "19": 5
+    "8": 32,
+    "9": 39,
+    "10": 50,
+    "11": 55,
+    "12": 123,
+    "13": 76,
+    "14": 91,
+    "15": 66,
+    "16": 31,
+    "17": 19,
+    "18": 11,
+    "19": 6
   },
 
   "dm_waves_2026": {
     "_note": "2026 DM drop schedule modeled as paired waves. Weather-neutral base: 602 DM leads per 400K pieces (calibrated from wave 1 actual 608 leads / avg weather mult 1.01). Apply dm_phase_multipliers on top for seasonal amplification, then dm_weather_sensitivity-dampened weather multiplier per day.",
-    "weather_neutral_base_per_400k": 602,
+    "weather_neutral_base_per_400k": 662,
     "waves": [
       {
         "wave": 1,
@@ -168,8 +168,10 @@
     "2023": 8998,
     "2024": 9973,
     "2025": 12478,
-    "2026_through_mar22": 3228,
+    "2026_through_mar24": 3871,
     "2026_organic_vs_model": "+6.9%",
-    "avg_annual_growth_pct": 11.5
+    "avg_annual_growth_pct": 11.5,
+    "growth_baked_in": 10,
+    "_note_growth": "+10% YoY growth target is baked into all baselines. No separate growth adjustment needed."
   }
 }

@@ -172,7 +172,7 @@ export default function HomePage() {
   const [chatError, setChatError] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
 
-  const [growthPct, setGrowthPct] = useState(0);
+  const growthPct = 10;
   const [forecastDate, setForecastDate] = useState("");
   const [dmInHome, setDmInHome] = useState(false);
   const [leadForecast, setLeadForecast] = useState(null);
@@ -642,7 +642,6 @@ export default function HomePage() {
       try {
         const dateToForecast = forecastDate || forecastDateMin;
         const params = new URLSearchParams({ date: dateToForecast });
-        if (growthPct) params.set("growth_pct", String(growthPct));
         if (dmInHome) params.set("dm_in_home", "1");
 
         const forecastDay = (priorityForecast?.forecast || []).find((p) => p.date === dateToForecast);
@@ -663,7 +662,7 @@ export default function HomePage() {
     }
     loadLeadForecast();
     return () => { active = false; };
-  }, [forecastDate, forecastDateMin, priorityForecast, growthPct, dmInHome]);
+  }, [forecastDate, forecastDateMin, priorityForecast, dmInHome]);
 
   useEffect(() => {
     let active = true;
@@ -671,7 +670,6 @@ export default function HomePage() {
       try {
         const year = selectedYear || new Date().getFullYear();
         const params = new URLSearchParams({ seasonal_curve: String(year) });
-        if (growthPct) params.set("growth_pct", String(growthPct));
         if (dmInHome) params.set("dm_in_home", "1");
         const resp = await fetch(`/api/leads/forecast?${params.toString()}`, { cache: "no-store" });
         const payload = await resp.json();
@@ -682,7 +680,7 @@ export default function HomePage() {
     }
     loadCurve();
     return () => { active = false; };
-  }, [selectedYear, growthPct, dmInHome]);
+  }, [selectedYear, dmInHome]);
 
   const forecastWeatherBadge = useCallback((point) => {
     if (!point?.weather) return null;
@@ -818,7 +816,7 @@ export default function HomePage() {
           <div className="dashboard-summary">
             <p><strong>What the data is.</strong> Lead and weather data from 2021-2026 lawn seasons (Feb 15 - May 10) across all markets in PA, NJ, and DE. The forecast is up to 15 days, updating daily.</p>
             <p><strong>Adjusting for your scenario.</strong> The Actual + 7 Day Forecast is for the Selected Market. The forecast blend below it is a blend of 4 markets with an option to view each one individually.</p>
-            <p><strong>What the lead forecast does.</strong> The Lead Forecast uses 5 years of historical leads + real-time weather forecasts to project daily lead volume. Toggle DM In Home to adjust projection for when direct mail is dropping.</p>
+            <p><strong>What the lead forecast does.</strong> The Lead Forecast uses 5 years of historical leads + real-time weather forecasts + the actual 2026 DM drop schedule to project daily lead volume. +10% YoY growth is baked in. Toggle DM In Home to see the DM wave impact.</p>
           </div>
         </article>
 
@@ -1185,12 +1183,10 @@ export default function HomePage() {
                       <span className="factor-value">{Math.round(leadForecast.weatherInput.tempMax)}°F · {Math.round(leadForecast.weatherInput.precipProb ?? 0)}% precip</span>
                     </div>
                   )}
-                  {growthPct !== 0 && (
-                    <div className="factor-pill factor-growth">
-                      <span className="factor-name">Growth Adj.</span>
-                      <span className="factor-value">{growthPct >= 0 ? "+" : ""}{growthPct}%</span>
-                    </div>
-                  )}
+                  <div className="factor-pill factor-growth">
+                    <span className="factor-name">YoY Growth</span>
+                    <span className="factor-value">+10%</span>
+                  </div>
                 </div>
               </div>
             ) : leadForecast ? (
@@ -1203,7 +1199,7 @@ export default function HomePage() {
           <div className="prediction-right">
             <div className="prediction-math">
               <h3>How This Works</h3>
-              <p>Predicted from 5 years of data (48K leads, 2021-2025). Uses the actual weather forecast for the selected date from our priority markets.</p>
+              <p>Predicted from 5 years of data (48K leads, 2021-2025) with +10% YoY growth baked in. Uses actual weather forecast from priority markets and 2026 DM drop schedule.</p>
               <div className="math-formula">
                 <span>Baseline</span>
                 <span className="math-op">&times;</span>
@@ -1221,22 +1217,7 @@ export default function HomePage() {
                   {" "}= {leadForecast.predictedLeads}
                 </p>
               )}
-              <div className="growth-calibration">
-                <label>
-                  YoY Growth Adjustment
-                  <div className="growth-input-row">
-                    <input
-                      type="range"
-                      min="-30"
-                      max="50"
-                      step="5"
-                      value={growthPct}
-                      onChange={(event) => setGrowthPct(Number(event.target.value))}
-                    />
-                    <span className="growth-value">{growthPct >= 0 ? "+" : ""}{growthPct}%</span>
-                  </div>
-                </label>
-              </div>
+              <p className="subtle" style={{ marginTop: "0.5rem" }}>+10% YoY growth target baked into all baselines</p>
               <p className="subtle">R² = 0.98 &middot; Trained on seasonal curve + day of week + weather conditions</p>
             </div>
           </div>
@@ -1279,7 +1260,7 @@ export default function HomePage() {
             So for mid-March: organic avg = 117/day, DM avg = 112/day. We historically get almost as many DM leads as organic leads that week because it{"'"}s our heaviest drop window. By end of season (May), DM only adds 5/day because drops have wound down.
           </p>
           <p>
-            One thing to flag: since we are mailing more each year, the 5-year DM average may understate what 2026 DM will actually deliver. The growth slider partially covers this, but it scales everything equally (organic and DM together).
+            One thing to flag: since we are mailing more each year, the 5-year DM average may understate what 2026 DM will actually deliver. The +10% growth target is baked into all baselines. DM forecasting now uses the actual 2026 drop schedule with wave-specific response curves.
           </p>
         </div>
       </section>

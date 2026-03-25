@@ -82,7 +82,7 @@ function computeWaveBasedDm(dateStr, orgWeatherMultiplier) {
   return { dm: Math.round(dmTotal), activeWaves: activeWaveCount, method: "wave-curve" };
 }
 
-function forecastDay({ date, weather, dmInHome, growthPct }) {
+function forecastDay({ date, weather, dmInHome }) {
   const d = new Date(`${date}T00:00:00`);
   const jsDow = d.getDay();
   const dowName = DOW_NAMES[jsDow];
@@ -100,7 +100,6 @@ function forecastDay({ date, weather, dmInHome, growthPct }) {
     };
   }
 
-  const growthMultiplier = 1 + (growthPct || 0) / 100;
   const dowMultiplier = modelCoefficients.dow_multipliers[dowName] ?? 1.0;
 
   const hasWeather = weather && weather.tempMax != null;
@@ -131,13 +130,13 @@ function forecastDay({ date, weather, dmInHome, growthPct }) {
       activeWaves = waveResult.activeWaves;
     } else {
       const legacyAddon = modelCoefficients.dm_addon_weekly[weekStr] ?? 0;
-      dmAddon = Math.round(legacyAddon * dowMultiplier * weatherMultiplier * growthMultiplier);
+      dmAddon = Math.round(legacyAddon * dowMultiplier * weatherMultiplier);
       dmMethod = "legacy-weekly";
     }
   }
 
-  const organicPredicted = Math.round(organicBaseline * dowMultiplier * weatherMultiplier * growthMultiplier);
-  const dmPredicted = Math.round(dmAddon * growthMultiplier);
+  const organicPredicted = Math.round(organicBaseline * dowMultiplier * weatherMultiplier);
+  const dmPredicted = dmAddon;
   const totalPredicted = organicPredicted + dmPredicted;
 
   const weatherUpliftPct = Math.round((weatherMultiplier - 1) * 100);
@@ -151,9 +150,9 @@ function forecastDay({ date, weather, dmInHome, growthPct }) {
     calendarWeek: calWeek,
     dayOfSeason,
     inSeason: true,
-    organicBaseline: Math.round(organicBaseline * growthMultiplier),
+    organicBaseline,
     dmAddon: dmPredicted,
-    seasonalBaseline: Math.round(organicBaseline * growthMultiplier) + dmPredicted,
+    seasonalBaseline: organicBaseline + dmPredicted,
     dowMultiplier: Math.round(dowMultiplier * 100) / 100,
     weatherCondition: weatherLabel,
     weatherKey: hasWeather ? weatherKey : null,
@@ -164,7 +163,7 @@ function forecastDay({ date, weather, dmInHome, growthPct }) {
     dmMethod,
     activeWaves,
     predictedLeads: totalPredicted,
-    growthPct: growthPct || 0,
+    growthPct: 10,
     phase: phase ? {
       name: phase.name,
       weatherSensitivity: phase.weatherSensitivity,
@@ -179,8 +178,7 @@ function forecastDay({ date, weather, dmInHome, growthPct }) {
   };
 }
 
-function buildSeasonalCurve(year, growthPct, dmInHome) {
-  const growthMultiplier = 1 + (growthPct || 0) / 100;
+function buildSeasonalCurve(year, dmInHome) {
   const curve = [];
   const feb15 = new Date(year, 1, 15);
   const satMult = modelCoefficients.dow_multipliers.saturday ?? 0.45;
@@ -213,8 +211,8 @@ function buildSeasonalCurve(year, growthPct, dmInHome) {
       dayKey,
       date: dateStr,
       dayOfSeason: dayOffset,
-      weekdayBaseline: Math.round(base * growthMultiplier),
-      saturdayBaseline: Math.round((organicBaseline * satMult + (dmInHome ? dmAddon * satMult : 0)) * growthMultiplier),
+      weekdayBaseline: base,
+      saturdayBaseline: Math.round(organicBaseline * satMult + (dmInHome ? dmAddon * satMult : 0)),
     });
   }
   return curve;
@@ -222,14 +220,13 @@ function buildSeasonalCurve(year, growthPct, dmInHome) {
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
-  const growthPct = searchParams.has("growth_pct") ? Number(searchParams.get("growth_pct")) : 0;
   const dmInHome = searchParams.get("dm_in_home") === "1";
 
   if (searchParams.has("seasonal_curve")) {
     const year = Number(searchParams.get("seasonal_curve")) || new Date().getFullYear();
-    const curve = buildSeasonalCurve(year, growthPct, dmInHome);
+    const curve = buildSeasonalCurve(year, dmInHome);
     return NextResponse.json({
-      year, growthPct, dmInHome, curve,
+      year, growthPct: 10, dmInHome, curve,
       dowMultipliers: modelCoefficients.dow_multipliers,
       weatherMultipliers: modelCoefficients.weather_multipliers,
       phases: SEASON_PHASES.map((p) => ({
@@ -264,17 +261,16 @@ export async function GET(request) {
       date: d,
       weather: hasWeather ? weather : null,
       dmInHome,
-      growthPct,
     }),
   );
 
   return NextResponse.json({
     forecasts,
     model: {
-      description: "Lawn lead forecast based on 5 years of historical data (2021-2025), updated with 2026 actuals through 3/22. DM uses drop-date-aware response curve when 2026 drops are known.",
-      factors: "organic_baseline + dm_drop_curve + dow + weather + growth",
+      description: "Lawn lead forecast based on 5 years of historical data (2021-2025) with +10% YoY growth baked in. Updated with 2026 actuals through 3/24. DM uses wave-based response curve from 2026 drop schedule.",
+      factors: "baseline (includes +10% growth) × DOW × weather + DM wave curve",
       r_squared: 0.98,
-      growthPct,
+      growthPct: 10,
       dmInHome,
       dmMethod: DM_WAVES.length ? "wave-curve (2026 schedule)" : "legacy-weekly",
     },
