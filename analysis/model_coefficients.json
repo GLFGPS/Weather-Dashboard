@@ -40,19 +40,19 @@
   },
 
   "seasonal_baseline_weekly": {
-    "_note": "ORGANIC-ONLY weekday baseline (excludes DM). Calibrated from 2026 actuals where available, 5Y average with +10% growth elsewhere. Week 13 validated at 161 from 4 days of actuals. Weeks 14-16 smoothed to reflect natural Peak progression (no artificial dips). Apply DOW and weather multipliers on top.",
+    "_note": "ORGANIC-ONLY weekday baseline (excludes DM). Week 13 validated at 153 (median of 4 days implied baselines: 154, 193, 152, 144 -- Tuesday outlier excluded from median). Week 14 set at 140 (between 5Y avg of 127 and week 13 validated value; no 2026 data yet). All other weeks are 5Y avg with +10% growth. Apply DOW, weather, and warm streak multipliers on top.",
     "7": 20,
     "8": 41,
     "9": 62,
     "10": 101,
     "11": 119,
     "12": 129,
-    "13": 161,
-    "14": 165,
-    "15": 170,
-    "16": 155,
-    "17": 135,
-    "18": 100,
+    "13": 153,
+    "14": 140,
+    "15": 165,
+    "16": 149,
+    "17": 129,
+    "18": 94,
     "19": 58
   },
 
@@ -125,12 +125,12 @@
   },
 
   "warm_streak_multipliers": {
-    "_note": "Consecutive warm days (>60°F) amplify organic leads beyond single-day weather multiplier. Homeowners who notice lawn issues on day 1 of warm weather call on day 2-3. Calibrated from historical patterns: 2021 4/5-4/9 (5-day streak), 2023 4/3-4/6 (4-day streak), 2024 4/8-4/10 (3-day streak). Organic runs 10-15% above single-day prediction during sustained warm stretches.",
+    "_note": "Consecutive warm days (>60°F) amplify organic leads modestly beyond single-day weather multiplier. The sunny_warm weather multiplier (1.35x) already captures most of the warm-day effect; this adds a small compounding bonus for sustained warmth. Cross-validated against all years 2021-2025: 2026 actuals run ~1.08x growth-adjusted comps (excluding outliers), so streak bonuses must be conservative to avoid over-prediction.",
     "1": 1.00,
-    "2": 1.05,
-    "3": 1.10,
-    "4": 1.12,
-    "5_plus": 1.15
+    "2": 1.02,
+    "3": 1.05,
+    "4": 1.07,
+    "5_plus": 1.10
   },
 
   "temperature_impact": {
