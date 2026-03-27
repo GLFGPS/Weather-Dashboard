@@ -1,7 +1,7 @@
 {
   "_description": "Pre-computed model lookup tables for dashboard integration without Python runtime",
   "_generated": "2026-03-23",
-  "_updated": "Weather-grounded, drop-date-aware DM model with seasonal phase amplification. All calibration uses actual weather from Open-Meteo (4 priority markets averaged). Incorporates 2026 actuals through 3/22 and actual weather through 3/29.",
+  "_updated": "Weather-grounded, drop-date-aware DM model with seasonal phase amplification. All calibration uses actual weather from Open-Meteo (4 priority markets averaged). Incorporates 2026 actuals through 3/26 and actual weather through 3/29. Peak DM multiplier recalibrated from 1.65 to 1.35 based on 7 days of wave 2 actuals. Week 13 organic baseline raised from 139 to 150 based on 4 days of actuals.",
 
   "weather_multipliers": {
     "_note": "Lead multiplier vs typical weekday baseline. Apply to seasonal baseline for organic. For DM, dampen by dm_weather_sensitivity.",
@@ -21,10 +21,10 @@
   },
 
   "dm_phase_multipliers": {
-    "_note": "DM response rate varies by season phase. Calibrated: wave 1 (Ramp) produced 608 DM from 400K pieces, weather-neutral ~602. Wave 2 (Peak) first 3 days actual 142 DM vs 59 model = 2.4x. Conservative full-window estimate: 1.65x. Reflects higher consumer intent during peak lawn season.",
+    "_note": "DM response rate varies by season phase. Calibrated: wave 1 (Ramp) produced 608 DM from 400K pieces, weather-neutral ~602. Wave 2 (Peak) 7-day actual implied multiplier = 1.35x (days 0-4 averaged 1.87x front-loaded, days 5-6 dropped to 0.86x). Prior estimate of 1.65x was based on first 3 days only and over-predicted the back half of the response window.",
     "Early": 0.50,
     "Ramp": 1.00,
-    "Peak": 1.65,
+    "Peak": 1.35,
     "Tail": 0.80
   },
 
@@ -47,7 +47,7 @@
     "10": 101,
     "11": 119,
     "12": 129,
-    "13": 139,
+    "13": 150,
     "14": 127,
     "15": 165,
     "16": 149,
@@ -140,8 +140,8 @@
     "2023": 8998,
     "2024": 9973,
     "2025": 12478,
-    "2026_through_mar24": 3871,
-    "2026_organic_vs_model": "+6.9%",
+    "2026_through_mar26": 4348,
+    "2026_organic_vs_model": "+8.4%",
     "avg_annual_growth_pct": 11.5,
     "growth_baked_in": 10,
     "_note_growth": "+10% YoY growth target is baked into all baselines. No separate growth adjustment needed."
