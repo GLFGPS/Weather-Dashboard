@@ -22,13 +22,27 @@ async function autoLogProjections(overview) {
     if (!currentSeries?.points?.length) return;
 
     const dmInHome = true;
+    const sortedPoints = [...currentSeries.points].sort((a, b) =>
+      a.date.localeCompare(b.date),
+    );
 
-    for (const point of currentSeries.points) {
+    let consecutiveWarm = 0;
+    for (const point of sortedPoints) {
       const weather = point.weather
         ? { tempMax: point.weather.avgTempMax }
         : null;
 
-      const projection = computeProjection(point.date, { weather, dmInHome });
+      if (weather && weather.tempMax >= 60) {
+        consecutiveWarm++;
+      } else {
+        consecutiveWarm = 0;
+      }
+
+      const projection = computeProjection(point.date, {
+        weather,
+        dmInHome,
+        warmStreak: consecutiveWarm,
+      });
       if (!projection) continue;
 
       const actualTotal = point.totalLeads || null;

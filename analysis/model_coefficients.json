@@ -40,19 +40,19 @@
   },
 
   "seasonal_baseline_weekly": {
-    "_note": "ORGANIC-ONLY weekday baseline (excludes DM). 5Y average with +10% YoY growth baked in (2026 target). Apply DOW and weather multipliers on top. No separate growth adjustment needed.",
+    "_note": "ORGANIC-ONLY weekday baseline (excludes DM). Calibrated from 2026 actuals where available, 5Y average with +10% growth elsewhere. Week 13 validated at 161 from 4 days of actuals. Weeks 14-16 smoothed to reflect natural Peak progression (no artificial dips). Apply DOW and weather multipliers on top.",
     "7": 20,
     "8": 41,
     "9": 62,
     "10": 101,
     "11": 119,
     "12": 129,
-    "13": 150,
-    "14": 127,
-    "15": 165,
-    "16": 149,
-    "17": 129,
-    "18": 94,
+    "13": 161,
+    "14": 165,
+    "15": 170,
+    "16": 155,
+    "17": 135,
+    "18": 100,
     "19": 58
   },
 
@@ -122,6 +122,15 @@
     "recovery_signal": {
       "impact": "Week 11 organic (911) was +22% vs 2025 (749). Driven by 3/8-3/11 warm spell (70-81°F). Confirms strong underlying demand when weather cooperates."
     }
+  },
+
+  "warm_streak_multipliers": {
+    "_note": "Consecutive warm days (>60°F) amplify organic leads beyond single-day weather multiplier. Homeowners who notice lawn issues on day 1 of warm weather call on day 2-3. Calibrated from historical patterns: 2021 4/5-4/9 (5-day streak), 2023 4/3-4/6 (4-day streak), 2024 4/8-4/10 (3-day streak). Organic runs 10-15% above single-day prediction during sustained warm stretches.",
+    "1": 1.00,
+    "2": 1.05,
+    "3": 1.10,
+    "4": 1.12,
+    "5_plus": 1.15
   },
 
   "temperature_impact": {

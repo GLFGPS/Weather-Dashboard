@@ -9,7 +9,15 @@ const DM_CURVE = modelCoefficients.dm_drops_2026?.response_curve_pct?.weights ||
 const DM_WINDOW = 14;
 const DM_BASE_PER_100K = modelCoefficients.dm_drops_2026?.weather_neutral_base_per_100k || 165;
 const DM_WEATHER_SENSITIVITY = modelCoefficients.dm_weather_sensitivity?.sensitivity ?? 0.3;
-const DM_PHASE_MULTS = modelCoefficients.dm_phase_multipliers || { Early: 0.5, Ramp: 1.0, Peak: 1.65, Tail: 0.8 };
+const DM_PHASE_MULTS = modelCoefficients.dm_phase_multipliers || { Early: 0.5, Ramp: 1.0, Peak: 1.35, Tail: 0.8 };
+const WARM_STREAK_MULTS = modelCoefficients.warm_streak_multipliers || {
+  "1": 1.0, "2": 1.05, "3": 1.10, "4": 1.12, "5_plus": 1.15,
+};
+
+function getWarmStreakMultiplier(consecutiveWarmDays) {
+  if (consecutiveWarmDays >= 5) return WARM_STREAK_MULTS["5_plus"] ?? 1.15;
+  return WARM_STREAK_MULTS[String(consecutiveWarmDays)] ?? 1.0;
+}
 
 function groupDropsIntoWaves(drops) {
   if (!drops.length) return [];
@@ -114,7 +122,7 @@ function computeDropBasedDm(dateStr, orgWeatherMultiplier, drops) {
   return { dm: Math.round(dmTotal), activeDrops: activeDropCount, method: "drop-curve" };
 }
 
-function forecastDay({ date, weather, dmInHome, drops }) {
+function forecastDay({ date, weather, dmInHome, drops, warmStreak }) {
   const d = new Date(`${date}T00:00:00`);
   const jsDow = d.getDay();
   const dowName = DOW_NAMES[jsDow];
@@ -167,7 +175,8 @@ function forecastDay({ date, weather, dmInHome, drops }) {
     }
   }
 
-  const organicPredicted = Math.round(organicBaseline * dowMultiplier * weatherMultiplier);
+  const warmStreakMult = getWarmStreakMultiplier(warmStreak ?? 0);
+  const organicPredicted = Math.round(organicBaseline * dowMultiplier * weatherMultiplier * warmStreakMult);
   const dmPredicted = dmAddon;
   const totalPredicted = organicPredicted + dmPredicted;
 
@@ -189,6 +198,8 @@ function forecastDay({ date, weather, dmInHome, drops }) {
     weatherCondition: weatherLabel,
     weatherKey: hasWeather ? weatherKey : null,
     weatherMultiplier: Math.round(weatherMultiplier * 100) / 100,
+    warmStreakMultiplier: Math.round(warmStreakMult * 100) / 100,
+    warmStreakDays: warmStreak ?? 0,
     weatherUpliftPct,
     dmInHome: !!dmInHome,
     dmPct,
@@ -308,6 +319,10 @@ export async function GET(request) {
   if (searchParams.has("precip_prob")) weather.precipProb = Number(searchParams.get("precip_prob"));
   if (searchParams.has("snow_depth")) weather.snowDepth = Number(searchParams.get("snow_depth"));
 
+  const warmStreak = searchParams.has("warm_streak")
+    ? Number(searchParams.get("warm_streak"))
+    : 0;
+
   const hasWeather = Object.keys(weather).length > 0;
   const dates = date.split(",").map((d) => d.trim());
 
@@ -317,14 +332,15 @@ export async function GET(request) {
       weather: hasWeather ? weather : null,
       dmInHome,
       drops: customDrops,
+      warmStreak,
     }),
   );
 
   return NextResponse.json({
     forecasts,
     model: {
-      description: "Lawn lead forecast based on 5 years of historical data (2021-2025) with +10% YoY growth baked in. Updated with 2026 actuals through 3/24. DM uses wave-based response curve from 2026 drop schedule.",
-      factors: "baseline (includes +10% growth) × DOW × weather + DM wave curve",
+      description: "Lawn lead forecast based on 5 years of historical data (2021-2025) with +10% YoY growth baked in. Updated with 2026 actuals through 3/26. DM uses wave-based response curve. Includes warm weather streak multiplier for consecutive 60°F+ days.",
+      factors: "baseline (includes +10% growth) × DOW × weather × warm_streak + DM wave curve",
       r_squared: 0.98,
       growthPct: 10,
       dmInHome,
