@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getLeadOverview, syncLeadFilesToDb } from "../../../../lib/leads-cache";
 import { hasDatabaseConnection } from "../../../../lib/db";
-import { logProjection } from "../../../../lib/projection-log";
+import { logProjection, updateActuals } from "../../../../lib/projection-log";
 import { computeProjection } from "../../../../lib/forecast-engine";
 
 export const runtime = "nodejs";
@@ -58,6 +58,15 @@ async function autoLogProjections(overview) {
         actualOrganic: actualOrganic > 0 ? actualOrganic : null,
         actualDm: actualDm > 0 ? actualDm : null,
       });
+
+      if (actualTotal > 0) {
+        await updateActuals({
+          forecastDate: point.date,
+          actualTotal,
+          actualOrganic: actualOrganic > 0 ? actualOrganic : null,
+          actualDm: actualDm > 0 ? actualDm : null,
+        });
+      }
     }
   } catch {
     // projection logging is non-critical
