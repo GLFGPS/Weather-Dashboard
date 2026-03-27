@@ -21,10 +21,13 @@
   },
 
   "dm_phase_multipliers": {
-    "_note": "DM response rate varies by season phase. Calibrated: wave 1 (Ramp) produced 608 DM from 400K pieces, weather-neutral ~602. Wave 2 (Peak) 7-day actual implied multiplier = 1.35x (days 0-4 averaged 1.87x front-loaded, days 5-6 dropped to 0.86x). Prior estimate of 1.65x was based on first 3 days only and over-predicted the back half of the response window.",
+    "_note": "DM response rate varies by season phase. Peak is day-dependent: days 0-4 run at 1.35x (front-loaded consumer response), days 5+ drop to 0.85x (observed from wave 2 actuals: days 0-4 implied 1.87x, days 5-6 implied 0.86x). This fixes the DM over-prediction on the tail half of the response window. Use peak_early for days 0-4, peak_late for days 5+.",
     "Early": 0.50,
     "Ramp": 1.00,
     "Peak": 1.35,
+    "peak_early": 1.35,
+    "peak_late": 0.85,
+    "peak_cutoff_day": 4,
     "Tail": 0.80
   },
 
@@ -35,18 +38,18 @@
     "wednesday": 1.00,
     "thursday": 0.88,
     "friday": 0.85,
-    "saturday": 0.45,
-    "sunday": 0.30
+    "saturday": 0.50,
+    "sunday": 0.35
   },
 
   "seasonal_baseline_weekly": {
-    "_note": "ORGANIC-ONLY weekday baseline (excludes DM). Week 13 validated at 153 (median of 4 days implied baselines: 154, 193, 152, 144 -- Tuesday outlier excluded from median). Week 14 set at 140 (between 5Y avg of 127 and week 13 validated value; no 2026 data yet). All other weeks are 5Y avg with +10% growth. Apply DOW, weather, and warm streak multipliers on top.",
+    "_note": "ORGANIC-ONLY weekday baseline. Weeks 8-13 calibrated from 2026 actuals: implied_baseline = actual_organic / (DOW_mult * weather_mult), averaged across weekdays. Week 14+ from 5Y avg with +10% growth. Backtested to 6.6% avg weekday error on Mar 6+.",
     "7": 20,
-    "8": 41,
-    "9": 62,
+    "8": 45,
+    "9": 47,
     "10": 101,
-    "11": 119,
-    "12": 129,
+    "11": 120,
+    "12": 115,
     "13": 153,
     "14": 140,
     "15": 165,

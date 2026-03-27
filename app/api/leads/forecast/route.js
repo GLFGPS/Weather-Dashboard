@@ -10,8 +10,11 @@ const DM_WINDOW = 14;
 const DM_BASE_PER_100K = modelCoefficients.dm_drops_2026?.weather_neutral_base_per_100k || 165;
 const DM_WEATHER_SENSITIVITY = modelCoefficients.dm_weather_sensitivity?.sensitivity ?? 0.3;
 const DM_PHASE_MULTS = modelCoefficients.dm_phase_multipliers || { Early: 0.5, Ramp: 1.0, Peak: 1.35, Tail: 0.8 };
+const PEAK_EARLY = modelCoefficients.dm_phase_multipliers?.peak_early ?? 1.35;
+const PEAK_LATE = modelCoefficients.dm_phase_multipliers?.peak_late ?? 0.85;
+const PEAK_CUTOFF_DAY = modelCoefficients.dm_phase_multipliers?.peak_cutoff_day ?? 4;
 const WARM_STREAK_MULTS = modelCoefficients.warm_streak_multipliers || {
-  "1": 1.0, "2": 1.05, "3": 1.10, "4": 1.12, "5_plus": 1.15,
+  "1": 1.0, "2": 1.02, "3": 1.05, "4": 1.07, "5_plus": 1.10,
 };
 
 function getWarmStreakMultiplier(consecutiveWarmDays) {
@@ -47,8 +50,10 @@ const SEASON_PHASES = [
   { name: "Tail", start: [4, 16], end: [5, 11], weatherSensitivity: "low-moderate", niceUplift: 5, badDrag: -18 },
 ];
 
-function classifyWeather({ tempMax, precipProb, snowDepth }) {
-  if ((snowDepth ?? 0) > 0.5) return "snow";
+function classifyWeather({ tempMax, precipProb, snowDepth, snowfall }) {
+  const snow = snowfall ?? snowDepth ?? 0;
+  if (snow > 1.0) return "snow";
+  if (snow > 0.1 && tempMax < 45) return "snow";
   if ((precipProb ?? 0) > 70) return "rain";
   if ((precipProb ?? 0) > 40) return "light_rain";
   if (tempMax >= 65 && (precipProb ?? 0) < 20) return "sunny_warm";
@@ -112,7 +117,12 @@ function computeDropBasedDm(dateStr, orgWeatherMultiplier, drops) {
 
     activeDropCount += wave.drops.length;
     const wavePhase = wave.phase || getSeasonPhase(wave.in_home_start)?.name || "Peak";
-    const phaseMult = DM_PHASE_MULTS[wavePhase] ?? 1.0;
+    let phaseMult;
+    if (wavePhase === "Peak") {
+      phaseMult = daysSinceInHome <= PEAK_CUTOFF_DAY ? PEAK_EARLY : PEAK_LATE;
+    } else {
+      phaseMult = DM_PHASE_MULTS[wavePhase] ?? 1.0;
+    }
     const weight = DM_CURVE[daysSinceInHome] ?? 0;
     const units = wave.pieces / 100000;
     dmTotal += (weight / weightSum) * DM_BASE_PER_100K * units * phaseMult * dmWeatherMult;
