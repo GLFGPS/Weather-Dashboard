@@ -1366,23 +1366,21 @@ export default function HomePage() {
           })}
         </div>
 
-        <div className="prediction-explainer">
+        <details className="prediction-explainer" style={{ cursor: "pointer" }}>
+          <summary style={{ fontWeight: 600, fontSize: "0.82rem", color: "#1a3a57", marginBottom: "6px" }}>How the forecast model works (click to expand)</summary>
           <p>
-            <strong>Historical Avg (DM off):</strong> The average organic/digital leads per weekday for that calendar week, across 2021-2025. This is Google, Facebook, Referral, Email, Text Campaign, etc. — everything except Direct Mail.
+            <strong>Historical Avg (DM off):</strong> The average organic/digital leads per weekday for that calendar week, across 2021-2025 — everything except Direct Mail.
           </p>
           <p>
-            <strong>Historical Avg + DM (DM on):</strong> Same organic number, plus the average DM leads per weekday for that same week across 2021-2025. It{"'"}s literally the historical average of what DM contributes on top of organic during that week.
+            <strong>Historical Avg + DM (DM on):</strong> Same organic number, plus the average DM leads per weekday for that same week across 2021-2025.
           </p>
           <p>
-            So for mid-March: organic avg = 117/day, DM avg = 112/day. We historically get almost as many DM leads as organic leads that week because it{"'"}s our heaviest drop window. By end of season (May), DM only adds 5/day because drops have wound down.
+            The +10% growth target is baked into all baselines. DM forecasting uses the actual 2026 drop schedule with wave-specific response curves. Consecutive warm days (&gt;60°F) add a modest organic boost.
           </p>
-          <p>
-            One thing to flag: since we are mailing more each year, the 5-year DM average may understate what 2026 DM will actually deliver. The +10% growth target is baked into all baselines. DM forecasting now uses the actual 2026 drop schedule with wave-specific response curves.
-          </p>
-        </div>
+        </details>
 
         {!loadingProjectionLog && projectionChartData.length > 0 && (
-          <div className="projection-accuracy-section" style={{ marginTop: "1.5rem", borderTop: "1px solid #e0e0e0", paddingTop: "1.5rem" }}>
+          <div className="projection-accuracy-section" style={{ marginTop: "0.75rem", borderTop: "1px solid #e0e0e0", paddingTop: "0.75rem" }}>
             <div className="trend-header">
               <h2 style={{ fontSize: "1.1rem" }}>Forecast Accuracy Tracker</h2>
               <div style={{ display: "flex", gap: "1rem", fontSize: "0.85rem" }}>
