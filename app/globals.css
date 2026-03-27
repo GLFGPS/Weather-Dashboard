@@ -665,21 +665,22 @@ th {
 .phase-track {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
+  gap: 6px;
   border-top: 1px solid #e2e9f0;
-  padding-top: 14px;
+  padding-top: 10px;
 }
 
 .phase-bucket {
   border: 2px solid #e0e0e0;
   border-radius: 8px;
-  padding: 10px;
+  padding: 7px 6px;
   text-align: center;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   opacity: 0.55;
   transition: opacity 0.15s, border-color 0.15s;
+  font-size: 0.82rem;
 }
 
 .phase-bucket-active {

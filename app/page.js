@@ -1238,6 +1238,45 @@ export default function HomePage() {
             ) : (
               <p className="subtle">Select a date within lawn season (Feb 15 - May 10)</p>
             )}
+
+            <div className="phase-track" style={{ marginTop: "14px" }}>
+              {[
+                { name: "Early", range: "Feb 15 – Mar 1", sensitivity: "Very High", bg: "#e3f2fd", border: "#90caf9", nice: "+50%", bad: "-15%" },
+                { name: "Ramp", range: "Mar 1 – 17", sensitivity: "High", bg: "#f3e5f5", border: "#ce93d8", nice: "+34%", bad: "-16%" },
+                { name: "Peak", range: "Mar 17 – Apr 16", sensitivity: "Moderate", bg: "#e8f5e9", border: "#81c784", nice: "+10%", bad: "-9%" },
+                { name: "Tail", range: "Apr 16 – May 10", sensitivity: "Low-Mod", bg: "#fff3e0", border: "#ffb74d", nice: "+5%", bad: "-18%" },
+              ].map((phase) => {
+                const isActive = currentPhase?.name === phase.name;
+                return (
+                  <div
+                    key={phase.name}
+                    className={`phase-bucket ${isActive ? "phase-bucket-active" : ""}`}
+                    style={{ background: isActive ? phase.bg : "#f8f9fa", borderColor: isActive ? phase.border : "#e0e0e0" }}
+                  >
+                    <strong className="phase-bucket-name">{phase.name}</strong>
+                    <span className="phase-bucket-range">{phase.range}</span>
+                    <span className="phase-bucket-sensitivity">Weather: {phase.sensitivity}</span>
+                    <span className="phase-bucket-impact">
+                      <span className="phase-nice">Nice {phase.nice}</span>
+                      <span className="phase-bad">Bad {phase.bad}</span>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            <details className="prediction-explainer" style={{ cursor: "pointer" }}>
+              <summary style={{ fontWeight: 600, fontSize: "0.82rem", color: "#1a3a57", marginBottom: "6px" }}>How the forecast model works (click to expand)</summary>
+              <p>
+                <strong>Historical Avg (DM off):</strong> The average organic/digital leads per weekday for that calendar week, across 2021-2025 — everything except Direct Mail.
+              </p>
+              <p>
+                <strong>Historical Avg + DM (DM on):</strong> Same organic number, plus the average DM leads per weekday for that same week across 2021-2025.
+              </p>
+              <p>
+                The +10% growth target is baked into all baselines. DM forecasting uses the actual 2026 drop schedule with wave-specific response curves. Consecutive warm days (&gt;60°F) add a modest organic boost.
+              </p>
+            </details>
           </div>
 
           <div className="prediction-right">
@@ -1339,45 +1378,6 @@ export default function HomePage() {
             </div>
           </div>
         </div>
-
-        <div className="phase-track">
-          {[
-            { name: "Early", range: "Feb 15 – Mar 1", sensitivity: "Very High", bg: "#e3f2fd", border: "#90caf9", nice: "+50%", bad: "-15%" },
-            { name: "Ramp", range: "Mar 1 – 17", sensitivity: "High", bg: "#f3e5f5", border: "#ce93d8", nice: "+34%", bad: "-16%" },
-            { name: "Peak", range: "Mar 17 – Apr 16", sensitivity: "Moderate", bg: "#e8f5e9", border: "#81c784", nice: "+10%", bad: "-9%" },
-            { name: "Tail", range: "Apr 16 – May 10", sensitivity: "Low-Mod", bg: "#fff3e0", border: "#ffb74d", nice: "+5%", bad: "-18%" },
-          ].map((phase) => {
-            const isActive = currentPhase?.name === phase.name;
-            return (
-              <div
-                key={phase.name}
-                className={`phase-bucket ${isActive ? "phase-bucket-active" : ""}`}
-                style={{ background: isActive ? phase.bg : "#f8f9fa", borderColor: isActive ? phase.border : "#e0e0e0" }}
-              >
-                <strong className="phase-bucket-name">{phase.name}</strong>
-                <span className="phase-bucket-range">{phase.range}</span>
-                <span className="phase-bucket-sensitivity">Weather: {phase.sensitivity}</span>
-                <span className="phase-bucket-impact">
-                  <span className="phase-nice">Nice {phase.nice}</span>
-                  <span className="phase-bad">Bad {phase.bad}</span>
-                </span>
-              </div>
-            );
-          })}
-        </div>
-
-        <details className="prediction-explainer" style={{ cursor: "pointer" }}>
-          <summary style={{ fontWeight: 600, fontSize: "0.82rem", color: "#1a3a57", marginBottom: "6px" }}>How the forecast model works (click to expand)</summary>
-          <p>
-            <strong>Historical Avg (DM off):</strong> The average organic/digital leads per weekday for that calendar week, across 2021-2025 — everything except Direct Mail.
-          </p>
-          <p>
-            <strong>Historical Avg + DM (DM on):</strong> Same organic number, plus the average DM leads per weekday for that same week across 2021-2025.
-          </p>
-          <p>
-            The +10% growth target is baked into all baselines. DM forecasting uses the actual 2026 drop schedule with wave-specific response curves. Consecutive warm days (&gt;60°F) add a modest organic boost.
-          </p>
-        </details>
 
         {!loadingProjectionLog && projectionChartData.length > 0 && (
           <div className="projection-accuracy-section" style={{ marginTop: "0.75rem", borderTop: "1px solid #e0e0e0", paddingTop: "0.75rem" }}>
