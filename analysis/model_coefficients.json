@@ -85,7 +85,8 @@
       { "drop_date": "2026-03-17", "in_home_date": "2026-03-20", "pieces": 200000, "phase": "Peak" },
       { "drop_date": "2026-03-19", "in_home_date": "2026-03-22", "pieces": 200000, "phase": "Peak" },
       { "drop_date": "2026-03-25", "in_home_date": "2026-03-28", "pieces": 243643, "phase": "Peak" },
-      { "drop_date": "2026-03-30", "in_home_date": "2026-04-02", "pieces": 182647, "phase": "Peak" }
+      { "drop_date": "2026-03-31", "in_home_date": "2026-04-03", "pieces": 182647, "phase": "Peak" },
+      { "drop_date": "2026-04-02", "in_home_date": "2026-04-05", "pieces": 295000, "phase": "Peak" }
     ],
     "response_curve_pct": {
       "_note": "Day-by-day % of total drop DM response (days 0-13 from in-home date). Derived from 2026 wave 1 actuals. Sum=100.",
@@ -152,7 +153,7 @@
     "2023": 8998,
     "2024": 9973,
     "2025": 12478,
-    "2026_through_mar26": 4348,
+    "2026_through_apr08": 7869,
     "2026_organic_vs_model": "+8.4%",
     "avg_annual_growth_pct": 11.5,
     "growth_baked_in": 10,

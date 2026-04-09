@@ -181,7 +181,8 @@ export default function HomePage() {
     { drop_date: "2026-03-17", pieces: 200000 },
     { drop_date: "2026-03-19", pieces: 200000 },
     { drop_date: "2026-03-25", pieces: 243643 },
-    { drop_date: "2026-03-30", pieces: 182647 },
+    { drop_date: "2026-03-31", pieces: 182647 },
+    { drop_date: "2026-04-02", pieces: 295000 },
   ]);
   const [newDropDate, setNewDropDate] = useState("");
   const [newDropPieces, setNewDropPieces] = useState("");
