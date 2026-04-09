@@ -43,16 +43,16 @@
   },
 
   "seasonal_baseline_weekly": {
-    "_note": "ORGANIC-ONLY weekday baseline. Weeks 8-13 calibrated from 2026 actuals: implied_baseline = actual_organic / (DOW_mult * weather_mult), averaged across weekdays. Week 14+ from 5Y avg with +10% growth. Backtested to 6.6% avg weekday error on Mar 6+.",
+    "_note": "ORGANIC-ONLY weekday baseline de-weathered from 2026 actuals. Each week's value = avg(actual_organic / (DOW_mult × weather_mult)) across weekdays. This removes weather and DOW effects to get the true underlying baseline. Weeks 16-19 projected using ratio of 2026 peak-vs-5Y-avg applied to 5Y values.",
     "7": 20,
-    "8": 45,
-    "9": 47,
-    "10": 101,
-    "11": 120,
-    "12": 115,
-    "13": 153,
-    "14": 140,
-    "15": 165,
+    "8": 41,
+    "9": 34,
+    "10": 95,
+    "11": 124,
+    "12": 128,
+    "13": 204,
+    "14": 179,
+    "15": 154,
     "16": 149,
     "17": 129,
     "18": 94,
@@ -91,6 +91,16 @@
     "response_curve_pct": {
       "_note": "Day-by-day % of total drop DM response (days 0-13 from in-home date). Derived from 2026 wave 1 actuals. Sum=100.",
       "weights": [5.1, 2.6, 2.0, 13.2, 14.6, 12.8, 10.4, 8.2, 4.3, 1.6, 6.7, 6.7, 7.6, 4.1]
+    },
+    "dm_rate_per_100k_by_dow": {
+      "_note": "Empirical DM leads per day per 100K active pieces, by day of week. Calibrated from 34 days of 2026 actuals (3/6-4/8). This is the simplest and most accurate DM model: for any date, sum active pieces across all drops in their 14-day window, multiply by the DOW rate, apply weather dampening. No wave grouping or response curve needed.",
+      "monday": 19.3,
+      "tuesday": 19.6,
+      "wednesday": 19.1,
+      "thursday": 15.6,
+      "friday": 15.4,
+      "saturday": 8.8,
+      "sunday": 3.9
     }
   },
 
