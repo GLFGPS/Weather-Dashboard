@@ -80,13 +80,13 @@
     "_note": "Individual DM drops for 2026 season. Each drop has a drop_date, in_home_date (+3 days), and pieces. The forecast engine computes DM contribution per day using weather_neutral_base_per_100k * (pieces/100K) * phase_mult * dm_weather_mult * response_curve_weight. Drops can be added/modified via the dashboard UI.",
     "weather_neutral_base_per_100k": 165,
     "drops": [
-      { "drop_date": "2026-03-03", "in_home_date": "2026-03-06", "pieces": 200000, "phase": "Ramp" },
-      { "drop_date": "2026-03-05", "in_home_date": "2026-03-08", "pieces": 200000, "phase": "Ramp" },
-      { "drop_date": "2026-03-17", "in_home_date": "2026-03-20", "pieces": 200000, "phase": "Peak" },
-      { "drop_date": "2026-03-19", "in_home_date": "2026-03-22", "pieces": 200000, "phase": "Peak" },
+      { "drop_date": "2026-03-03", "in_home_date": "2026-03-06", "pieces": 185322, "phase": "Ramp" },
+      { "drop_date": "2026-03-05", "in_home_date": "2026-03-08", "pieces": 216546, "phase": "Ramp" },
+      { "drop_date": "2026-03-17", "in_home_date": "2026-03-20", "pieces": 235155, "phase": "Peak" },
+      { "drop_date": "2026-03-19", "in_home_date": "2026-03-22", "pieces": 172949, "phase": "Peak" },
       { "drop_date": "2026-03-25", "in_home_date": "2026-03-28", "pieces": 243643, "phase": "Peak" },
       { "drop_date": "2026-03-31", "in_home_date": "2026-04-03", "pieces": 182647, "phase": "Peak" },
-      { "drop_date": "2026-04-02", "in_home_date": "2026-04-05", "pieces": 295000, "phase": "Peak" }
+      { "drop_date": "2026-04-02", "in_home_date": "2026-04-05", "pieces": 295442, "phase": "Peak" }
     ],
     "response_curve_pct": {
       "_note": "Day-by-day % of total drop DM response (days 0-13 from in-home date). Derived from 2026 wave 1 actuals. Sum=100.",
@@ -94,13 +94,13 @@
     },
     "dm_rate_per_100k_by_dow": {
       "_note": "Empirical DM leads per day per 100K active pieces, by day of week. Calibrated from 34 days of 2026 actuals (3/6-4/8). This is the simplest and most accurate DM model: for any date, sum active pieces across all drops in their 14-day window, multiply by the DOW rate, apply weather dampening. No wave grouping or response curve needed.",
-      "monday": 19.3,
-      "tuesday": 19.6,
-      "wednesday": 19.1,
-      "thursday": 15.6,
-      "friday": 15.4,
+      "monday": 18.4,
+      "tuesday": 18.5,
+      "wednesday": 17.9,
+      "thursday": 14.7,
+      "friday": 14.7,
       "saturday": 8.8,
-      "sunday": 3.9
+      "sunday": 3.8
     }
   },
 

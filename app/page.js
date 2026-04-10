@@ -176,13 +176,13 @@ export default function HomePage() {
   const growthPct = 10;
   const [forecastDate, setForecastDate] = useState("");
   const [dmDrops, setDmDrops] = useState([
-    { drop_date: "2026-03-03", pieces: 200000 },
-    { drop_date: "2026-03-05", pieces: 200000 },
-    { drop_date: "2026-03-17", pieces: 200000 },
-    { drop_date: "2026-03-19", pieces: 200000 },
+    { drop_date: "2026-03-03", pieces: 185322 },
+    { drop_date: "2026-03-05", pieces: 216546 },
+    { drop_date: "2026-03-17", pieces: 235155 },
+    { drop_date: "2026-03-19", pieces: 172949 },
     { drop_date: "2026-03-25", pieces: 243643 },
     { drop_date: "2026-03-31", pieces: 182647 },
-    { drop_date: "2026-04-02", pieces: 295000 },
+    { drop_date: "2026-04-02", pieces: 295442 },
   ]);
   const [newDropDate, setNewDropDate] = useState("");
   const [newDropPieces, setNewDropPieces] = useState("");
