@@ -16,8 +16,6 @@ const PRIORITY_MARKET_KEYWORDS = [
 ];
 
 const ROLLING_DAYS = 7;
-const SEASON_END_MONTH_INDEX = 4;
-const SEASON_END_DAY = 10;
 const HISTORICAL_YEARS = 5;
 
 function toNumber(value) {
@@ -68,13 +66,6 @@ function parseAnalysisDate(value) {
   const date = new Date(`${value}T00:00:00Z`);
   if (Number.isNaN(date.getTime())) return null;
   return date;
-}
-
-function clampToSeasonEnd(date) {
-  const seasonEnd = new Date(
-    Date.UTC(date.getUTCFullYear(), SEASON_END_MONTH_INDEX, SEASON_END_DAY),
-  );
-  return date > seasonEnd ? seasonEnd : date;
 }
 
 function summarizeWindow(days) {
@@ -256,8 +247,7 @@ export async function GET(request) {
     const includeMarket = searchParams.get("includeMarket")?.trim() || "";
     const requestedDate = parseAnalysisDate(searchParams.get("analysisDate"));
     const today = new Date();
-    const analysisDateRaw = requestedDate && requestedDate <= today ? requestedDate : today;
-    const analysisDate = clampToSeasonEnd(analysisDateRaw);
+    const analysisDate = requestedDate && requestedDate <= today ? requestedDate : today;
 
     const analysisDateISO = formatISODate(analysisDate);
     const windowStartISO = formatISODate(shiftDays(analysisDate, -(ROLLING_DAYS - 1)));

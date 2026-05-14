@@ -6,20 +6,11 @@ import {
 } from "../../../lib/weather-cache";
 import { loadMarketsConfig } from "../../../lib/markets";
 
-const SEASON_END_MONTH_INDEX = 4;
-const SEASON_END_DAY = 10;
 const HISTORICAL_YEARS = 5;
 
 function mean(values) {
   if (!values.length) return null;
   return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
-function clampToSeasonEnd(date) {
-  const seasonEnd = new Date(
-    Date.UTC(date.getUTCFullYear(), SEASON_END_MONTH_INDEX, SEASON_END_DAY),
-  );
-  return date > seasonEnd ? seasonEnd : date;
 }
 
 function ordinal(value) {
@@ -152,14 +143,13 @@ export async function GET(request) {
       : 30;
 
     const now = new Date();
-    const anchorDateRaw =
+    const anchorDate =
       parsedAnalysisDate && !Number.isNaN(parsedAnalysisDate.getTime()) && parsedAnalysisDate <= now
         ? parsedAnalysisDate
         : now;
-    const anchorDate = clampToSeasonEnd(anchorDateRaw);
     const currentYear = anchorDate.getUTCFullYear();
     const analysisDateISO = formatISODate(anchorDate);
-    const forecastEndISO = formatISODate(clampToSeasonEnd(shiftDays(anchorDate, 3)));
+    const forecastEndISO = formatISODate(shiftDays(anchorDate, 3));
     const lookbackStartISO = formatISODate(shiftDays(anchorDate, -(lookbackDays - 1)));
 
     const primaryRange = await getOrFetchWeatherRange({
