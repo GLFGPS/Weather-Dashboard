@@ -47,7 +47,7 @@ const LAG_METRIC_OPTIONS = [
 ];
 
 const TREND_DAY_RANGE_START = "02-15";
-const TREND_DAY_RANGE_END = "05-10";
+const TREND_DAY_RANGE_END = "12-31";
 
 const CHART_COLORS = ["#118257", "#1f4f86", "#8a5cf5", "#f08a24", "#da3f5f", "#0f766e"];
 
@@ -638,9 +638,7 @@ export default function HomePage() {
   const forecastDateMax = useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() + 14);
-    const seasonEnd = `${d.getFullYear()}-05-10`;
-    const futureDate = d.toISOString().slice(0, 10);
-    return futureDate < seasonEnd ? futureDate : seasonEnd;
+    return d.toISOString().slice(0, 10);
   }, []);
 
   useEffect(() => {
