@@ -48,8 +48,15 @@ const LAG_METRIC_OPTIONS = [
 
 const TREND_DAY_RANGE_START = "02-15";
 const TREND_DAY_RANGE_END = "12-31";
+const ANALYSIS_FORECAST_LOOKAHEAD_DAYS = 14;
 
 const CHART_COLORS = ["#118257", "#1f4f86", "#8a5cf5", "#f08a24", "#da3f5f", "#0f766e"];
+
+function getTodayPlusDaysISO(daysAhead) {
+  const d = new Date();
+  d.setDate(d.getDate() + daysAhead);
+  return d.toISOString().slice(0, 10);
+}
 
 function formatNumber(value, digits = 0) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return "--";
@@ -136,6 +143,10 @@ export default function HomePage() {
   const [showAllLocations, setShowAllLocations] = useState(false);
 
   const [analysisDate, setAnalysisDate] = useState("");
+  const analysisDateMax = useMemo(
+    () => getTodayPlusDaysISO(ANALYSIS_FORECAST_LOOKAHEAD_DAYS),
+    [],
+  );
   const [trendStartDay, setTrendStartDay] = useState("");
   const [trendEndDay, setTrendEndDay] = useState("");
   const [selectedYear, setSelectedYear] = useState(null);
@@ -447,8 +458,8 @@ export default function HomePage() {
         } else if (analysisDate && payload?.seasonWindow) {
           if (analysisDate < payload.seasonWindow.start) {
             setAnalysisDate(payload.seasonWindow.start);
-          } else if (analysisDate > payload.seasonWindow.end) {
-            setAnalysisDate(payload.seasonWindow.end);
+          } else if (analysisDate > analysisDateMax) {
+            setAnalysisDate(analysisDateMax);
           }
         }
 
@@ -634,12 +645,11 @@ export default function HomePage() {
     }
   }
 
-  const forecastDateMin = useMemo(() => new Date().toISOString().slice(0, 10), []);
-  const forecastDateMax = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 14);
-    return d.toISOString().slice(0, 10);
-  }, []);
+  const forecastDateMin = useMemo(() => getTodayPlusDaysISO(0), []);
+  const forecastDateMax = useMemo(
+    () => getTodayPlusDaysISO(ANALYSIS_FORECAST_LOOKAHEAD_DAYS),
+    [],
+  );
 
   useEffect(() => {
     if (!forecastDate) {
@@ -841,7 +851,7 @@ export default function HomePage() {
                 type="date"
                 value={analysisDate}
                 min={leadsOverview?.seasonWindow?.start || undefined}
-                max={leadsOverview?.seasonWindow?.end || undefined}
+                max={analysisDateMax}
                 onChange={(event) => setAnalysisDate(event.target.value)}
                 disabled={!analysisDate}
               />
