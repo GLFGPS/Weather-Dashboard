@@ -11,6 +11,12 @@ function isDmSource(source) {
   return upper.startsWith("DM") || upper.includes("DIRECT MAIL");
 }
 
+function getYesterdayISO() {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
 async function autoLogProjections(overview) {
   if (!hasDatabaseConnection()) return;
 
@@ -22,9 +28,13 @@ async function autoLogProjections(overview) {
     if (!currentSeries?.points?.length) return;
 
     const dmInHome = true;
-    const sortedPoints = [...currentSeries.points].sort((a, b) =>
-      a.date.localeCompare(b.date),
-    );
+    const yesterdayISO = getYesterdayISO();
+    const seasonEnd = currentSeries.seasonWindow?.end || yesterdayISO;
+    const logThrough = seasonEnd < yesterdayISO ? seasonEnd : yesterdayISO;
+
+    const sortedPoints = [...currentSeries.points]
+      .filter((point) => point.date <= logThrough)
+      .sort((a, b) => a.date.localeCompare(b.date));
 
     let consecutiveWarm = 0;
     for (const point of sortedPoints) {
@@ -45,18 +55,18 @@ async function autoLogProjections(overview) {
       });
       if (!projection) continue;
 
-      const actualTotal = point.totalLeads || null;
-      const actualDm = point.directMailLeads || null;
+      const actualTotal = point.totalLeads > 0 ? point.totalLeads : null;
+      const actualDm = point.directMailLeads > 0 ? point.directMailLeads : null;
       const actualOrganic =
         actualTotal != null && actualDm != null
           ? actualTotal - actualDm
-          : null;
+          : actualTotal;
 
       await logProjection({
         ...projection,
-        actualTotal: actualTotal > 0 ? actualTotal : null,
+        actualTotal,
         actualOrganic: actualOrganic > 0 ? actualOrganic : null,
-        actualDm: actualDm > 0 ? actualDm : null,
+        actualDm,
       });
 
       if (actualTotal > 0) {
@@ -64,7 +74,7 @@ async function autoLogProjections(overview) {
           forecastDate: point.date,
           actualTotal,
           actualOrganic: actualOrganic > 0 ? actualOrganic : null,
-          actualDm: actualDm > 0 ? actualDm : null,
+          actualDm,
         });
       }
     }

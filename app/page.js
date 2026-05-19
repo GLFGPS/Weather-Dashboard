@@ -610,7 +610,7 @@ export default function HomePage() {
           </div>
 
           <div className="dashboard-summary">
-            <p><strong>What the data is.</strong> Lead and weather data from 2021-2026 lawn seasons (Feb 15 - May 10) across all markets in PA, NJ, and DE. The forecast is up to 15 days, updating daily.</p>
+            <p><strong>What the data is.</strong> Lead and weather data from 2021-2026 lawn seasons (Feb 15 through late May, ongoing daily) across all markets in PA, NJ, and DE. The forecast is up to 15 days ahead, updating daily.</p>
             <p><strong>Adjusting for your scenario.</strong> The Actual + 7 Day Forecast is for the Selected Market. The forecast blend below it is a blend of 4 markets with an option to view each one individually.</p>
             <p><strong>What the lead forecast does.</strong> The Lead Forecast uses 5 years of historical leads + real-time weather forecasts + your DM drop schedule to project daily lead volume. +10% YoY growth is baked in. Add or remove drops in the schedule manager to see how timing and volume affect projections.</p>
           </div>
@@ -981,7 +981,7 @@ export default function HomePage() {
             ) : leadForecast ? (
               <p className="subtle">{leadForecast.message || "Outside lawn season"}</p>
             ) : (
-              <p className="subtle">Select a date within lawn season (Feb 15 - May 10)</p>
+              <p className="subtle">Select a date within lawn season (Feb 15 - late May)</p>
             )}
 
             <div className="phase-track" style={{ marginTop: "14px" }}>
@@ -989,7 +989,7 @@ export default function HomePage() {
                 { name: "Early", range: "Feb 15 – Mar 1", sensitivity: "Very High", bg: "#e3f2fd", border: "#90caf9", nice: "+50%", bad: "-15%" },
                 { name: "Ramp", range: "Mar 1 – 17", sensitivity: "High", bg: "#f3e5f5", border: "#ce93d8", nice: "+34%", bad: "-16%" },
                 { name: "Peak", range: "Mar 17 – Apr 16", sensitivity: "Moderate", bg: "#e8f5e9", border: "#81c784", nice: "+10%", bad: "-9%" },
-                { name: "Tail", range: "Apr 16 – May 10", sensitivity: "Low-Mod", bg: "#fff3e0", border: "#ffb74d", nice: "+5%", bad: "-18%" },
+                { name: "Tail", range: "Apr 16 – May 31", sensitivity: "Low-Mod", bg: "#fff3e0", border: "#ffb74d", nice: "+5%", bad: "-18%" },
               ].map((phase) => {
                 const isActive = currentPhase?.name === phase.name;
                 return (

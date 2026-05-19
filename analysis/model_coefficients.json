@@ -43,7 +43,7 @@
   },
 
   "seasonal_baseline_weekly": {
-    "_note": "ORGANIC-ONLY weekday baseline de-weathered from 2026 actuals. Each week's value = avg(actual_organic / (DOW_mult × weather_mult)) across weekdays. This removes weather and DOW effects to get the true underlying baseline. Weeks 16-19 projected using ratio of 2026 peak-vs-5Y-avg applied to 5Y values.",
+    "_note": "ORGANIC-ONLY weekday baseline de-weathered from 2026 actuals. Weeks 20-22 calibrated from Apr-May 2026 actuals (post-peak tail) so daily forecasts continue through late May instead of stopping at week 19.",
     "7": 20,
     "8": 41,
     "9": 34,
@@ -56,7 +56,10 @@
     "16": 149,
     "17": 129,
     "18": 94,
-    "19": 58
+    "19": 58,
+    "20": 100,
+    "21": 64,
+    "22": 50
   },
 
   "dm_addon_weekly": {
@@ -73,7 +76,10 @@
     "16": 31,
     "17": 19,
     "18": 11,
-    "19": 6
+    "19": 6,
+    "20": 8,
+    "21": 6,
+    "22": 4
   },
 
   "dm_drops_2026": {

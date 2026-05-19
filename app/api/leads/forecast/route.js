@@ -16,7 +16,7 @@ const SEASON_PHASES = [
   { name: "Early", start: [2, 15], end: [3, 1], weatherSensitivity: "very high", niceUplift: 50, badDrag: -15 },
   { name: "Ramp", start: [3, 1], end: [3, 17], weatherSensitivity: "high", niceUplift: 34, badDrag: -16 },
   { name: "Peak", start: [3, 17], end: [4, 16], weatherSensitivity: "moderate", niceUplift: 10, badDrag: -9 },
-  { name: "Tail", start: [4, 16], end: [5, 11], weatherSensitivity: "low-moderate", niceUplift: 5, badDrag: -18 },
+  { name: "Tail", start: [4, 16], end: [6, 1], weatherSensitivity: "low-moderate", niceUplift: 5, badDrag: -18 },
 ];
 
 function classifyWeather({ tempMax, precipProb, snowDepth, snowfall }) {
@@ -108,7 +108,7 @@ function forecastDay({ date, weather, dmInHome, drops }) {
     return {
       date, dow: dowName, dowLabel, inSeason: false,
       predictedLeads: null,
-      message: "Date is outside lawn season (weeks 7-19, ~Feb 15 - May 10)",
+      message: "Date is outside supported forecast range (calendar weeks 7-22, ~Feb 15 - late May)",
     };
   }
 
@@ -195,7 +195,7 @@ function buildSeasonalCurve(year, dmInHome, drops) {
   const feb15 = new Date(year, 1, 15);
   const satMult = modelCoefficients.dow_multipliers.saturday ?? 0.50;
 
-  for (let dayOffset = 0; dayOffset <= 84; dayOffset++) {
+  for (let dayOffset = 0; dayOffset <= 120; dayOffset++) {
     const d = new Date(feb15);
     d.setDate(d.getDate() + dayOffset);
     const dateStr = d.toISOString().slice(0, 10);
