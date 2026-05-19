@@ -30,6 +30,13 @@ const FOURTH_METRIC_OPTIONS = [
 
 const ANALYSIS_FORECAST_LOOKAHEAD_DAYS = 14;
 
+const PROJECTION_TABLE_DAY_OPTIONS = [
+  { value: "7", label: "Last 7 days" },
+  { value: "14", label: "Last 14 days" },
+  { value: "30", label: "Last 30 days" },
+  { value: "all", label: "All days" },
+];
+
 function getTodayPlusDaysISO(daysAhead) {
   const d = new Date();
   d.setDate(d.getDate() + daysAhead);
@@ -87,6 +94,19 @@ function compactDelta(metric, digits = 1, suffix = "", label = "YoY") {
   return formatYoY(metric, digits, suffix, label).delta.replace(/^[^:]+:\s*/, "");
 }
 
+function filterProjectionRowsByRecentDays(rows, dayOption) {
+  if (!rows.length) return [];
+  const chronological = [...rows].sort((a, b) => a.date.localeCompare(b.date));
+  if (dayOption === "all") return chronological;
+
+  const limit = Number(dayOption);
+  if (!Number.isFinite(limit) || limit <= 0) return chronological;
+
+  const newestFirst = [...chronological].sort((a, b) => b.date.localeCompare(a.date));
+  const recent = newestFirst.slice(0, limit);
+  return recent.sort((a, b) => a.date.localeCompare(b.date));
+}
+
 export default function HomePage() {
   const [markets, setMarkets] = useState([]);
   const [selectedMarket, setSelectedMarket] = useState(FALLBACK_MARKETS[0]);
@@ -141,6 +161,7 @@ export default function HomePage() {
 
   const [projectionLog, setProjectionLog] = useState(null);
   const [loadingProjectionLog, setLoadingProjectionLog] = useState(true);
+  const [projectionTableDays, setProjectionTableDays] = useState("14");
 
   const fourthMetric = useMemo(
     () =>
@@ -507,6 +528,11 @@ export default function HomePage() {
         };
       });
   }, [projectionLog]);
+
+  const projectionTableRows = useMemo(
+    () => filterProjectionRowsByRecentDays(projectionChartData, projectionTableDays),
+    [projectionChartData, projectionTableDays],
+  );
 
   const currentPhase = leadForecast?.phase || null;
 
@@ -1131,7 +1157,31 @@ export default function HomePage() {
               </ResponsiveContainer>
             </div>
 
-            <div className="table-wrap" style={{ marginTop: "0.75rem" }}>
+            <details className="projection-table-details">
+              <summary className="projection-table-summary">
+                Day-by-day breakdown
+                <span className="projection-table-count">
+                  ({projectionTableRows.length} of {projectionChartData.length} days)
+                </span>
+              </summary>
+
+              <div className="projection-table-controls">
+                <label>
+                  Show dates
+                  <select
+                    value={projectionTableDays}
+                    onChange={(event) => setProjectionTableDays(event.target.value)}
+                  >
+                    {PROJECTION_TABLE_DAY_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="table-wrap projection-table-scroll">
               <table>
                 <thead>
                   <tr>
@@ -1146,7 +1196,7 @@ export default function HomePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {projectionChartData.map((row) => {
+                  {projectionTableRows.map((row) => {
                     const absErr = Math.abs(row.errorPct);
                     const errColor = absErr <= 5 ? "#118257" : absErr <= 15 ? "#f08a24" : "#da3f5f";
                     return (
@@ -1168,7 +1218,8 @@ export default function HomePage() {
                   })}
                 </tbody>
               </table>
-            </div>
+              </div>
+            </details>
           </div>
         )}
       </section>
